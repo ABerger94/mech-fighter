@@ -70,8 +70,11 @@ landscape lock where the browser allows it, and a prompt appears if you are
 holding the device in portrait. Touch devices also render at a lower pixel
 ratio and shadow resolution to hold the frame rate.
 
-Center an enemy in the reticle and it turns red: that is a soft lock, and shots
-are led onto the target while it holds. Energy powers thrusters and beam
+Center an enemy in the reticle and it turns red: that is a soft lock. While it
+holds, every shot is led onto where the target will actually be when it
+arrives, solved separately for each weapon: a lobbed mortar shell gets far more
+lead than a beam from the other hand, and the solver accounts for the arc, the
+target's velocity and its fall. Energy powers thrusters and beam
 weapons; ballistic weapons use magazines instead. A frame heavier than its legs'
 load rating loses speed, thrust and turn rate, so the garage's weight bar is the
 real constraint on a build.
