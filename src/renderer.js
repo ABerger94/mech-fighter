@@ -13,15 +13,21 @@ import * as THREE from 'three';
 /* ====================================================================== */
 
 export class GameRenderer {
-  constructor(canvas) {
+  /**
+   * @param {HTMLCanvasElement} canvas
+   * @param {{touch?: boolean}} opts touch devices get a cheaper pipeline
+   */
+  constructor(canvas, opts = {}) {
     this.canvas = canvas;
+    this.touch = !!opts.touch;
+    this.maxPixelRatio = this.touch ? 1.5 : 2;
     this.renderer = new THREE.WebGLRenderer({
       canvas,
       antialias: true,
       powerPreference: 'high-performance',
       stencil: false
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.maxPixelRatio));
     this.renderer.setSize(window.innerWidth, window.innerHeight, false);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -39,7 +45,7 @@ export class GameRenderer {
   resize() {
     this.width = window.innerWidth;
     this.height = window.innerHeight;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.maxPixelRatio));
     this.renderer.setSize(this.width, this.height, false);
     if (this.camera) {
       this.camera.aspect = this.width / this.height;
@@ -225,7 +231,7 @@ export function createGarageEnvironment() {
   key.position.set(9, 18, 12);
   key.target.position.set(0, 3.5, 0);
   key.castShadow = true;
-  key.shadow.mapSize.set(2048, 2048);
+  key.shadow.mapSize.set(SHADOW_SIZE, SHADOW_SIZE);
   key.shadow.bias = -0.0009;
   key.shadow.camera.near = 2;
   key.shadow.camera.far = 60;
@@ -380,6 +386,13 @@ export class OrbitCamera {
 /* ====================================================================== */
 /*  Arena environment                                                     */
 /* ====================================================================== */
+
+/** Touch devices render at a lower shadow resolution to keep the frame rate up. */
+const SHADOW_SIZE = (() => {
+  if (typeof window === 'undefined') return 2048;
+  const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  return coarse || navigator.maxTouchPoints > 0 ? 1024 : 2048;
+})();
 
 export const ARENA_HALF = 82;
 
@@ -719,7 +732,7 @@ export function createArenaEnvironment(arenaId = 'orbital') {
   const sun = new THREE.DirectionalLight(L.sun[0], L.sun[1]);
   sun.position.set(...L.sun[2]);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(SHADOW_SIZE, SHADOW_SIZE);
   sun.shadow.camera.near = 20;
   sun.shadow.camera.far = 320;
   sun.shadow.camera.left = -110;

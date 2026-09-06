@@ -8,11 +8,13 @@
 
 import './style.css';
 import { GameRenderer } from './renderer.js';
-import { InputManager } from './input.js';
+import { InputManager, TouchControls, isTouchDevice } from './input.js';
 import { Hud } from './hud.js';
 import { Garage } from './garage.js';
 import { Arena } from './arena.js';
 import { audio } from './audio.js';
+
+const MOVE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD'];
 
 const STATES = {
   TITLE: 'title',
@@ -25,9 +27,18 @@ const STATES = {
 class Game {
   constructor() {
     this.canvas = document.getElementById('viewport');
-    this.renderer = new GameRenderer(this.canvas);
+    this.touch = isTouchDevice();
+    document.body.classList.toggle('is-touch', this.touch);
+
+    this.renderer = new GameRenderer(this.canvas, { touch: this.touch });
     this.input = new InputManager(this.canvas);
+    this.input.touchMode = this.touch;
     this.hud = new Hud();
+
+    this.touchControls = new TouchControls(this.input, this.canvas, document.getElementById('touch-layer'));
+    this.touchControls.onPause = () => {
+      if (this.state === STATES.ARENA) this.arena.setPaused(!this.arena.paused);
+    };
 
     this.screens = {
       [STATES.TITLE]: document.getElementById('screen-title'),
@@ -39,6 +50,7 @@ class Game {
 
     this.garage = new Garage({
       canvas: this.canvas,
+      touch: this.touch,
       onDeploy: (loadout, settings) => this.deploy(loadout, settings)
     });
 
@@ -54,6 +66,13 @@ class Game {
     this.lastLoadout = null;
     this.lastSettings = { difficulty: 'veteran', opponent: 'nemesis', arena: 'orbital' };
     this.clock = { last: performance.now() / 1000 };
+
+    // A hybrid device that starts on the mouse switches to touch controls the
+    // first time someone actually touches the screen.
+    this._onFirstTouch = (e) => {
+      if (e.pointerType === 'touch' && !this.touch) this.setTouchMode(true);
+    };
+    window.addEventListener('pointerdown', this._onFirstTouch, { capture: true });
 
     this._bindGlobalActions();
     this._bindPointerLock();
@@ -78,6 +97,20 @@ class Game {
     }, 260);
   }
 
+  /** Switch the whole UI between mouse/keyboard and on-screen touch controls. */
+  setTouchMode(on) {
+    if (this.touch === on) return;
+    this.touch = on;
+    this.input.touchMode = on;
+    this.garage.touch = on;
+    document.body.classList.toggle('is-touch', on);
+    this.touchControls.setEnabled(on && this.state === STATES.ARENA);
+    if (on && this.state === STATES.ARENA) {
+      this.input.releaseLock();
+      this.arena.setPaused(false);
+    }
+  }
+
   /* -------------------------------------------------------------- state */
 
   setState(next) {
@@ -92,6 +125,8 @@ class Game {
     const inArena = next === STATES.ARENA;
     this.input.enabled = inArena;
     this.garage.visible = next === STATES.GARAGE || next === STATES.TITLE;
+    this.touchControls.setEnabled(this.touch && inArena);
+    document.body.classList.toggle('in-arena', inArena);
 
     if (next === STATES.GARAGE || next === STATES.TITLE) {
       this.garage.show();
@@ -103,13 +138,17 @@ class Game {
 
     if (inArena) {
       this.renderer.use(this.arena.scene, this.arena.camera);
-      this.input.requestLock();
-      // If the browser refused the lock (it rate-limits re-entry after Escape),
-      // hold the match on the pause card rather than running without a mouse.
-      window.clearTimeout(this._lockCheck);
-      this._lockCheck = window.setTimeout(() => {
-        if (this.state === STATES.ARENA && !this.input.locked) this.arena.setPaused(true);
-      }, 500);
+      // Touch devices have no pointer lock; the on-screen look pad stands in.
+      if (!this.touch) {
+        this.input.requestLock();
+        // If the browser refused the lock (it rate-limits re-entry after
+        // Escape), hold the match on the pause card rather than running
+        // without a mouse.
+        window.clearTimeout(this._lockCheck);
+        this._lockCheck = window.setTimeout(() => {
+          if (this.state === STATES.ARENA && !this.input.locked) this.arena.setPaused(true);
+        }, 500);
+      }
     } else {
       this.input.releaseLock();
       audio.setBoost(false);
@@ -126,6 +165,7 @@ class Game {
     this.lastLoadout = loadout;
     this.lastSettings = settings;
     audio.init();
+    if (this.touch) this.goFullscreen();
     this.arena.start(loadout, settings);
     this.setState(STATES.ARENA);
   }
@@ -180,6 +220,32 @@ class Game {
     this.setState(STATES.RESULT);
   }
 
+  /**
+   * Best-effort fullscreen and landscape lock. Both are permission-gated and
+   * unsupported on some browsers, so every step is optional.
+   */
+  goFullscreen() {
+    const el = document.documentElement;
+    try {
+      if (!document.fullscreenElement) {
+        const req = el.requestFullscreen || el.webkitRequestFullscreen;
+        const p = req && req.call(el, { navigationUI: 'hide' });
+        if (p && p.catch) p.catch(() => {});
+      }
+    } catch (err) {
+      /* fullscreen unavailable */
+    }
+    try {
+      const lock = window.screen && window.screen.orientation && window.screen.orientation.lock;
+      if (lock) {
+        const p = lock.call(window.screen.orientation, 'landscape');
+        if (p && p.catch) p.catch(() => {});
+      }
+    } catch (err) {
+      /* orientation lock unavailable */
+    }
+  }
+
   /* ------------------------------------------------------------- events */
 
   _bindGlobalActions() {
@@ -192,6 +258,11 @@ class Game {
           audio.init();
           audio.uiConfirm();
           this.setState(STATES.GARAGE);
+          break;
+        case 'fullscreen':
+          audio.init();
+          audio.uiClick();
+          this.goFullscreen();
           break;
         case 'how-to':
           audio.uiClick();
@@ -225,7 +296,17 @@ class Game {
 
     // clicking the arena re-acquires pointer lock
     this.canvas.addEventListener('click', () => {
+      if (this.touch) return;
       if (this.state === STATES.ARENA && !this.input.locked) this.resumeMatch();
+    });
+
+    // If a keyboard turns up mid-match, this was never a phone: hand the
+    // controls back to mouse and keyboard.
+    window.addEventListener('keydown', (e) => {
+      if (this.touch && this.state === STATES.ARENA && MOVE_KEYS.includes(e.code)) {
+        this.setTouchMode(false);
+        this.input.requestLock();
+      }
     });
 
     window.addEventListener('keydown', (e) => {
@@ -243,7 +324,7 @@ class Game {
 
   _bindPointerLock() {
     this.input.onLockChange = (locked) => {
-      if (this.state !== STATES.ARENA) return;
+      if (this.touch || this.state !== STATES.ARENA) return;
       if (!locked && this.arena.running && !this.arena.finished) {
         this.arena.setPaused(true);
       } else if (locked) {
@@ -255,7 +336,7 @@ class Game {
   resumeMatch() {
     if (this.state !== STATES.ARENA) return;
     this.arena.setPaused(false);
-    this.input.requestLock();
+    if (!this.touch) this.input.requestLock();
   }
 
   /* --------------------------------------------------------------- loop */

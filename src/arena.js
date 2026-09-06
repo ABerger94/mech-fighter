@@ -1204,7 +1204,7 @@ export class Arena {
     if (!f.alive) return;
 
     // ---- look
-    if (input.locked) {
+    if (input.canLook()) {
       this.chase.yaw -= input.dx * input.sensitivity;
       const dy = input.dy * input.sensitivity * (input.invertY ? -1 : 1);
       this.chase.pitch = THREE.MathUtils.clamp(this.chase.pitch - dy, -0.85, 0.72);

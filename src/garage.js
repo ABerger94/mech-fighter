@@ -35,6 +35,7 @@ export class Garage {
    */
   constructor(opts) {
     this.canvas = opts.canvas;
+    this.touch = !!opts.touch;
     this.onDeploy = opts.onDeploy || (() => {});
 
     const env = createGarageEnvironment();
@@ -58,6 +59,7 @@ export class Garage {
     this._buildTabs();
     this._buildSlotStrip();
     this._buildPaintUi();
+    this._buildMobileBar();
     this._buildDeploymentUi();
     this._buildDifficultyUi();
     this._bindActions();
@@ -125,6 +127,9 @@ export class Garage {
       paintList: $('paint-list'),
       presets: $('paint-presets'),
       difficulty: $('difficulty-seg'),
+      mobileBar: $('mobile-bar'),
+      leftPanel: document.querySelector('.panel--left'),
+      rightPanel: document.querySelector('.panel--right'),
       arenaSeg: $('arena-seg'),
       arenaNote: $('arena-note'),
       opponentList: $('opponent-list'),
@@ -164,6 +169,7 @@ export class Garage {
         this.activeSlot = slot;
         audio.uiClick();
         this.refreshUi();
+        if (this.touch) this.setSheet('left');
       });
       this.dom.slotStrip.appendChild(chip);
       this.slotChips[slot] = chip;
@@ -228,6 +234,42 @@ export class Garage {
       const entry = this.paintInputs[key];
       entry.input.value = this.loadout.colors[key];
       entry.code.textContent = this.loadout.colors[key].toUpperCase();
+    }
+  }
+
+  /**
+   * Narrow screens show the two side panels as bottom sheets, one at a time,
+   * driven by this bar. On desktop the bar is hidden by CSS and unused.
+   */
+  _buildMobileBar() {
+    this.openSheet = null;
+    for (const btn of this.dom.mobileBar.querySelectorAll('button')) {
+      btn.addEventListener('click', () => {
+        const sheet = btn.dataset.sheet;
+        if (sheet === 'deploy') {
+          audio.uiConfirm();
+          this.setSheet(null);
+          this.onDeploy(this.getLoadout(), this.getSettings());
+          return;
+        }
+        audio.uiClick();
+        this.setSheet(this.openSheet === sheet ? null : sheet);
+      });
+    }
+
+    // Tapping or dragging the viewport dismisses an open sheet.
+    this.canvas.addEventListener('pointerdown', () => {
+      if (this.visible && this.openSheet) this.setSheet(null);
+    });
+  }
+
+  /** @param {'left'|'right'|null} sheet */
+  setSheet(sheet) {
+    this.openSheet = sheet;
+    this.dom.leftPanel.classList.toggle('is-open', sheet === 'left');
+    this.dom.rightPanel.classList.toggle('is-open', sheet === 'right');
+    for (const btn of this.dom.mobileBar.querySelectorAll('button')) {
+      btn.classList.toggle('is-active', btn.dataset.sheet === sheet);
     }
   }
 
@@ -551,6 +593,7 @@ export class Garage {
   hide() {
     this.visible = false;
     this.orbit.enabled = false;
+    this.setSheet(null);
   }
 
   update(dt) {
