@@ -65,6 +65,8 @@ const _fn2 = new THREE.Vector3();
 const _fn3 = new THREE.Vector3();
 const _fn4 = new THREE.Vector3();
 const _fnQ = new THREE.Quaternion();
+const _ld1 = new THREE.Vector3();
+const _ld2 = new THREE.Vector3();
 
 /** Squared distance between two segments, with the closest points. */
 function closestSegmentPoints(p1, q1, p2, q2, out1, out2) {
@@ -309,6 +311,7 @@ export class Arena {
     this._aiTmp = new THREE.Vector3();
     this._aiTmp2 = new THREE.Vector3();
     this._aiTmp3 = new THREE.Vector3();
+    this._leadPt = new THREE.Vector3();
   }
 
   /**
@@ -729,10 +732,63 @@ export class Arena {
   /* ------------------------------------------------------------ firing */
 
   /**
+   * How long a shot from this weapon actually takes to cover the distance.
+   *
+   * For arcing ordnance the muzzle speed is split between the horizontal and
+   * vertical axes, so a shell crosses the ground far slower than its speed
+   * stat suggests; using the straight-line distance would under-lead badly.
+   * @returns {number} seconds
+   */
+  _flightTime(from, to, part) {
+    const dx = Math.hypot(to.x - from.x, to.z - from.z);
+    const dy = to.y - from.y;
+    if (!part.grav) return Math.hypot(dx, dy) / Math.max(1, part.speed);
+    const angle = ballisticAngle(dx, dy, part.speed, part.grav, !!part.arcing);
+    if (angle === null) return dx / Math.max(1, part.speed);
+    const horizontal = part.speed * Math.cos(angle);
+    return horizontal > 0.01 ? dx / horizontal : dx / Math.max(1, part.speed);
+  }
+
+  /** Where a fighter will be in `t` seconds, including its own fall. */
+  _predictTarget(target, t, out) {
+    out.set(
+      target.pos.x + target.vel.x * t,
+      target.pos.y + target.vel.y * t - 0.5 * GRAVITY * t * t,
+      target.pos.z + target.vel.z * t
+    );
+    if (out.y < target.groundY) out.y = target.groundY;
+    out.y += target.height * 0.62;
+    return out;
+  }
+
+  /**
+   * Aim point that puts the shot where the target will be when it lands.
+   * Solved iteratively because the flight time depends on the lead itself.
+   * @param {number} scale 1 leads perfectly; the AI under-leads by its skill
+   * @param {THREE.Vector3|null} error deliberate aim wobble, applied last
+   */
+  _leadAim(muzzle, part, target, scale, error, out) {
+    target.center(out);
+    // Homing ordnance steers itself, and hitscan has no travel time at all.
+    if (!part.speed || part.homing > 0) {
+      if (error) out.add(error);
+      return out;
+    }
+    for (let i = 0; i < 3; i++) {
+      const t = this._flightTime(muzzle, out, part);
+      this._predictTarget(target, t * scale, out);
+    }
+    if (error) out.add(error);
+    return out;
+  }
+
+  /**
    * Attempt to fire one weapon slot.
+   * @param {{target: object, scale?: number, error?: THREE.Vector3}|null} lead
+   *        when set, the aim point is replaced by a solved intercept
    * @returns {boolean} true when a shot went out
    */
-  fire(f, slotName, aimPoint) {
+  fire(f, slotName, aimPoint, lead = null) {
     const w = f.weapons[slotName];
     if (!w || !f.alive) return false;
     const part = w.part;
@@ -765,8 +821,15 @@ export class Arena {
     const target = f === this.player ? this.enemy : this.player;
     const spread = (part.spread || 0) * f.stats.spreadMult;
 
+    // Lead the shot onto where the target will be, per weapon: a slow shell
+    // needs far more lead than a beam from the other hand.
+    let aim = aimPoint;
+    if (lead && lead.target && lead.target.alive) {
+      aim = this._leadAim(_v4, part, lead.target, lead.scale ?? 1, lead.error || null, this._leadPt);
+    }
+
     // Arcing ordnance solves its own launch angle so lobbed shells actually land.
-    const base = _v3.copy(aimPoint).sub(_v4);
+    const base = _v3.copy(aim).sub(_v4);
     if (base.lengthSq() < 0.0001) base.set(0, 0, -1);
     if (part.grav > 0) {
       const flat = Math.hypot(base.x, base.z);
@@ -790,7 +853,7 @@ export class Arena {
     // recoil + effects
     const kick = (part.kind === 'ballistic' ? 0.9 : 0.55) * (1 + chargeFrac * 0.8);
     punchRecoil(f.mech, slotName === 'left' ? 'left' : 'right', kick);
-    const fwd = _v2.copy(aimPoint).sub(_v4).normalize();
+    const fwd = _v2.copy(aim).sub(_v4).normalize();
     this.effects.muzzleFlash(_v4, fwd, part.tracer.color, (part.kind === 'missile' ? 0.9 : 1.15) * (1 + chargeFrac));
     if (f === this.player && chargeFrac > 0.5) this.chase.addShake(0.25 * chargeFrac);
 
@@ -811,7 +874,7 @@ export class Arena {
    * spin-up cadence, continuous beams, or a plain shot.
    * @param {boolean} held is the trigger down this frame
    */
-  _handleTrigger(f, slotName, held, aimPoint, dt) {
+  _handleTrigger(f, slotName, held, aimPoint, dt, lead = null) {
     const w = f.weapons[slotName];
     if (!w || !f.alive) return;
     const part = w.part;
@@ -837,7 +900,7 @@ export class Arena {
         }
       } else if (!held && w.chargeT > 0.08) {
         w._chargeBeeped = false;
-        this.fire(f, slotName, aimPoint);
+        this.fire(f, slotName, aimPoint, lead);
       } else if (!held) {
         w.chargeT = 0;
         w._chargeBeeped = false;
@@ -845,7 +908,7 @@ export class Arena {
       return;
     }
 
-    if (held) this.fire(f, slotName, aimPoint);
+    if (held) this.fire(f, slotName, aimPoint, lead);
   }
 
   /** Continuous hitscan beam: damage per second along a ray from the muzzle. */
@@ -1226,9 +1289,9 @@ export class Arena {
       const withinCone = cos > Math.cos(7 * DEG * f.stats.lockSpeed);
       if (withinCone && dist < f.stats.scanRange * 2.2 && this.hasLineOfSight(f.center(_v4), _v2)) {
         this._locked = true;
-        const w = f.weapons.right.part;
-        const lead = w.speed > 0 ? dist / w.speed : 0;
-        this._aimPoint.copy(_v2).addScaledVector(this.enemy.vel, lead * 0.85);
+        // Aim at the frame itself; fire() solves the intercept per weapon, so
+        // a mortar and a beam rifle in the same build each lead correctly.
+        this._aimPoint.copy(_v2);
       }
     }
 
@@ -1263,11 +1326,12 @@ export class Arena {
       if (f.energy <= 0) f.blocking = false;
     }
 
-    this._handleTrigger(f, 'right', input.mouse.left, this._aimPoint, dt);
-    this._handleTrigger(f, 'left', input.mouse.right && leftPart.kind !== 'shield', this._aimPoint, dt);
+    const lead = this._locked && this.enemy.alive ? { target: this.enemy, scale: 1 } : null;
+    this._handleTrigger(f, 'right', input.mouse.left, this._aimPoint, dt, lead);
+    this._handleTrigger(f, 'left', input.mouse.right && leftPart.kind !== 'shield', this._aimPoint, dt, lead);
 
     if (input.hit('KeyF')) {
-      if (f.weapons.shoulder) this.fire(f, 'shoulder', this._aimPoint);
+      if (f.weapons.shoulder) this.fire(f, 'shoulder', this._aimPoint, lead);
       else if (f.funnels) this.setFunnels(f, !f.funnelsDeployed);
     }
     if (input.hit('KeyR')) {
@@ -1519,10 +1583,10 @@ export class Arena {
     // -------- shooting
     if (los) {
       const aimAt = this._aiAim.copy(p.center(this._aiTmp));
-      // lead the target so fast frames still get hit
       const rw = e.weapons.right.part;
-      if (rw.speed > 0) aimAt.addScaledVector(p.vel, (dist / rw.speed) * (0.55 + skill * 0.5));
-      aimAt.add(ai.aimError);
+      // The solver does the leading; skill decides how well, and the wobble
+      // is applied on top of the intercept.
+      const aiLead = { target: p, scale: 0.55 + skill * 0.5, error: ai.aimError };
 
       const fwd = e.forward(this._aiTmp2);
       const toAim = this._aiTmp3.copy(aimAt).sub(e.center(this._aiTmp)).normalize();
@@ -1542,11 +1606,11 @@ export class Arena {
         facing > 0.86 && ai.burstOpen && lw.kind !== 'none' && lw.kind !== 'shield' && lw.kind !== 'melee' && dist < lw.range * 1.05;
 
       // charge weapons need the trigger held, so the AI commits for a beat
-      this._handleTrigger(e, 'right', wantRight, aimAt, dt);
-      this._handleTrigger(e, 'left', wantLeft && ai.leftOpen, aimAt, dt);
+      this._handleTrigger(e, 'right', wantRight, aimAt, dt, aiLead);
+      this._handleTrigger(e, 'left', wantLeft && ai.leftOpen, aimAt, dt, aiLead);
 
       if (e.weapons.shoulder && dist < 120 && Math.random() < 0.012 + skill * 0.02) {
-        this.fire(e, 'shoulder', aimAt);
+        this.fire(e, 'shoulder', aimAt, aiLead);
       }
 
       if (ai.meleeSlot && dist < e.weapons[ai.meleeSlot].part.range * 0.9 && facing > 0.8) {
