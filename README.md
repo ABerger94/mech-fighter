@@ -42,7 +42,7 @@ configuration: the framework is detected as Vite, the build command is
 | `Shift` | Quick-boost dash |
 | Left mouse | Fire the right-hand weapon |
 | Right mouse | Fire the left-hand weapon, swing a blade, or brace a shield |
-| `F` | Fire backpack ordnance (Hornet Pod only) |
+| `F` | Fire backpack ordnance, or deploy/recall funnels |
 | `R` | Reload both arms |
 | `Esc` | Pause and release the mouse |
 
@@ -55,20 +55,67 @@ real constraint on a build.
 Matches last three minutes. If neither frame is destroyed, the pilot with the
 higher remaining armour percentage wins.
 
+### Firing models
+
+Weapons do not all behave the same way, and the HUD tells you which one you are
+holding:
+
+- **Charge** — the Longbow rifle winds up while you hold the trigger and fires
+  on release for up to 3.4x damage. The charge meter sits under your energy bar.
+- **Sustained beam** — the Aurora laser is hitscan: it hits the instant you fire
+  and bills your generator per second rather than per shot.
+- **Spin-up** — the Gatling Driver starts at a third of its cadence and climbs
+  to a wall of lead if you keep the trigger down.
+- **Arcing** — the Arc Mortar lobs over cover; the launch angle is solved for
+  the point under your reticle, so aim at the target, not above it.
+- **Lunging melee** — the Assault Lance throws the whole frame forward behind
+  the point, closing about twelve metres on its own.
+- **Funnels** — the Vesper backpack carries four autonomous bits. `F` sends them
+  out to orbit you and fire on their own; they drain energy while deployed and
+  dock themselves when you run dry.
+
 ## Building a mech
 
-Seven slots, each changing the derived stats:
+Seven slots and 46 parts, each changing the derived stats:
 
-- **Head** — sensor range and lock-on speed
-- **Torso** — the bulk of your armour, energy capacity and damage resistance
-- **Arms** — weapon spread, melee power and reload speed
-- **Legs** — load capacity, walk speed, boost and turn rate
-- **Backpack** — thrusters, an auxiliary reactor, or a missile rack
-- **Right / left hand** — nine weapons including beam rifles, a railgun, a
-  shotgun, homing missile pods, a plasma blade and a tower shield
+- **Head** (6) — sensor range, lock-on speed, reload assistance
+- **Torso** (6) — the bulk of your armour, energy capacity, damage resistance,
+  and on the Phantom frame a stealth rating that degrades enemy fire control
+- **Arms** (6) — weapon spread, melee power, reload speed, forearm guards
+- **Legs** (7) — load capacity, walk speed, boost, turn rate, and locomotion
+- **Backpack** (7) — thrusters, an auxiliary reactor, a missile rack, a radar
+  array, an overdrive booster, a field repair unit, or funnel bits
+- **Right / left hand** (20) — beam rifles, a railgun, a charge sniper, a
+  gatling, a shotgun, a bazooka, an arcing mortar, homing missiles, seeker
+  orbs, a sustained laser, a plasma sprayer, four melee weapons and two shields
 
-Five armour channels are paintable, with six preset schemes. The build, its
-paint and the chosen difficulty persist in `localStorage`.
+### Locomotion
+
+Legs are not just a speed stat. Four of the seven move in fundamentally
+different ways:
+
+| Legs | Behaviour |
+| --- | --- |
+| Biped / reverse-joint | Walk, jump, hover on thrusters, quick-boost |
+| Arachne quad | Four-legged; huge load budget, steady, poor vertical |
+| Siege treads | Rolls; **cannot jump or hover at all**, but dashes 45% further |
+| Glide hover | Permanently floats ~2m; low grip, so it drifts through corners |
+
+Five armour channels are paintable, with eight preset schemes. The build, paint,
+battlefield, opponent and difficulty all persist in `localStorage`.
+
+## Battlefields and opponents
+
+Three arenas, each with its own props, palette, lighting and ambient life:
+
+- **Orbital Deck** — Federation test platform. Open sightlines, pillar cover.
+- **Canyon Ruins** — sun-blasted rock spires and mesas under a hard warm sun.
+- **Neon City** — a tower grid of tight lanes lit magenta and cyan.
+
+Six opponents, from the Trainer Mk-I up to the Overlord ZX, each a full frame
+built from the same catalogue you use — including a tracked gatling platform, a
+drifting stealth duellist, quadruped artillery and an ace with funnels. Pick one
+from the roster, or take a random contract.
 
 ## Project layout
 
@@ -99,4 +146,7 @@ src/
 - The enemy AI cycles between engaging at its weapon's preferred range,
   flanking when line of sight is broken, withdrawing while reloading or out of
   energy, and charging when it carries a blade. Its aim error grows with range
-  and shrinks with difficulty.
+  and shrinks with difficulty, and it holds charge weapons, deploys its own
+  funnels and refuses to jump on legs that cannot.
+- Arenas are built on first use and cached, each with its own effects pool and
+  camera rig, so switching battlefields between matches is instant.

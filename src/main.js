@@ -39,7 +39,7 @@ class Game {
 
     this.garage = new Garage({
       canvas: this.canvas,
-      onDeploy: (loadout, difficulty) => this.deploy(loadout, difficulty)
+      onDeploy: (loadout, settings) => this.deploy(loadout, settings)
     });
 
     this.arena = new Arena({
@@ -52,7 +52,7 @@ class Game {
     this.state = null;
     this.previousState = STATES.TITLE;
     this.lastLoadout = null;
-    this.lastDifficulty = 'veteran';
+    this.lastSettings = { difficulty: 'veteran', opponent: 'nemesis', arena: 'orbital' };
     this.clock = { last: performance.now() / 1000 };
 
     this._bindGlobalActions();
@@ -122,11 +122,11 @@ class Game {
 
   /* ------------------------------------------------------------ actions */
 
-  deploy(loadout, difficulty) {
+  deploy(loadout, settings) {
     this.lastLoadout = loadout;
-    this.lastDifficulty = difficulty;
+    this.lastSettings = settings;
     audio.init();
-    this.arena.start(loadout, difficulty);
+    this.arena.start(loadout, settings);
     this.setState(STATES.ARENA);
   }
 
@@ -135,7 +135,7 @@ class Game {
       this.setState(STATES.GARAGE);
       return;
     }
-    this.deploy(this.lastLoadout, this.lastDifficulty);
+    this.deploy(this.lastLoadout, this.lastSettings);
   }
 
   abortMatch() {

@@ -8,9 +8,9 @@
  */
 
 import * as THREE from 'three';
-import { createArenaEnvironment, ChaseCamera } from './renderer.js';
-import { buildMech, disposeMech, updateMech, punchRecoil, playMelee, flashDamage } from './mech.js';
-import { ENEMY_PRESETS, DIFFICULTIES } from './data/parts.js';
+import { createArenaEnvironment, ChaseCamera, ARENAS, getArena } from './renderer.js';
+import { buildMech, disposeMech, updateMech, punchRecoil, playMelee, flashDamage, setSpin } from './mech.js';
+import { ENEMY_PRESETS, DIFFICULTIES, getPart } from './data/parts.js';
 import { Effects } from './effects.js';
 import { audio } from './audio.js';
 
@@ -52,6 +52,19 @@ const _pj4 = new THREE.Vector3();
 const _pjA = new THREE.Vector3();
 const _pjB = new THREE.Vector3();
 const _pjHit = new THREE.Vector3();
+const _lz1 = new THREE.Vector3();
+const _lz2 = new THREE.Vector3();
+const _lz3 = new THREE.Vector3();
+const _lz4 = new THREE.Vector3();
+const _lzA = new THREE.Vector3();
+const _lzB = new THREE.Vector3();
+const _lzC = new THREE.Vector3();
+const _lzD = new THREE.Vector3();
+const _fn1 = new THREE.Vector3();
+const _fn2 = new THREE.Vector3();
+const _fn3 = new THREE.Vector3();
+const _fn4 = new THREE.Vector3();
+const _fnQ = new THREE.Quaternion();
 
 /** Squared distance between two segments, with the closest points. */
 function closestSegmentPoints(p1, q1, p2, q2, out1, out2) {
@@ -112,6 +125,21 @@ function scatter(dir, degrees) {
   return dir;
 }
 
+/**
+ * Elevation angle that lands a projectile of `speed` on a target `dx` metres
+ * away horizontally and `dy` metres up, under gravity `g`.
+ * @param {boolean} high pick the lobbed arc rather than the flat one
+ * @returns {number|null} radians, or null when the shot cannot reach
+ */
+function ballisticAngle(dx, dy, speed, g, high) {
+  if (g <= 0 || dx < 0.001) return null;
+  const v2 = speed * speed;
+  const disc = v2 * v2 - g * (g * dx * dx + 2 * dy * v2);
+  if (disc < 0) return null;
+  const root = Math.sqrt(disc);
+  return Math.atan((v2 + (high ? root : -root)) / (g * dx));
+}
+
 /** Yaw that makes a fighter at `from` face `to` (local forward is -Z). */
 function yawTowards(from, to) {
   return Math.atan2(-(to.x - from.x), -(to.z - from.z));
@@ -130,6 +158,10 @@ class WeaponSlot {
     this.ammo = part.mag || 0;
     this.reloading = false;
     this.reloadTimer = 0;
+    this.chargeT = 0;      // seconds held on a charge weapon
+    this.spin = 0;         // 0..1 gatling spin-up
+    this.beamMesh = null;  // continuous laser geometry
+    this.beamActive = false;
   }
 
   get usesAmmo() {
@@ -137,7 +169,22 @@ class WeaponSlot {
   }
 
   get interval() {
-    return this.part.rpm > 0 ? 60 / this.part.rpm : 1;
+    const base = this.part.rpm > 0 ? 60 / this.part.rpm : 1;
+    if (!this.part.spinUp) return base;
+    // barrels start slow and wind up to the rated cadence
+    const floor = this.part.spinFloor ?? 0.35;
+    return base / (floor + (1 - floor) * this.spin);
+  }
+
+  /** 0..1 charge progress for weapons with a capacitor. */
+  get chargeFrac() {
+    return this.part.charge ? Math.min(1, this.chargeT / this.part.charge) : 0;
+  }
+
+  /** Damage multiplier from the current charge. */
+  get chargeMult() {
+    if (!this.part.charge) return 1;
+    return 1 + (this.part.chargeMult - 1) * this.chargeFrac;
   }
 }
 
@@ -184,6 +231,9 @@ class Fighter {
     };
 
     this.meleePending = null;
+    this.funnels = null;
+    this.funnelPart = null;
+    this.funnelsDeployed = false;
     this.damageDealt = 0;
     this.damageTaken = 0;
     this.shotsFired = 0;
@@ -229,21 +279,18 @@ export class Arena {
     this.hud = opts.hud;
     this.onEnd = opts.onEnd || (() => {});
 
-    const env = createArenaEnvironment();
-    this.scene = env.scene;
-    this.camera = env.camera;
-    this.colliders = env.colliders;
-    this.envUpdate = env.update;
-    this.half = env.half;
-
-    this.effects = new Effects(this.scene);
-    this.effects.setCamera(this.camera);
-    this.chase = new ChaseCamera(this.camera);
+    // Environments are built on demand and cached; each keeps its own effects
+    // pool and camera rig so switching battlefields is instant.
+    this.environments = new Map();
+    this.arenaId = null;
+    this._useEnvironment(ARENAS[0].id);
 
     this.projectiles = [];
     this.projPools = new Map();
     this.projGeo = new Map();
     this.projMat = new Map();
+    this.beamMats = new Map();
+    this.funnelMats = [];
 
     this.player = null;
     this.enemy = null;
@@ -264,18 +311,54 @@ export class Arena {
     this._aiTmp3 = new THREE.Vector3();
   }
 
+  /**
+   * Bind the arena to a battlefield, building it the first time it is used.
+   * @param {string} id one of ARENAS
+   */
+  _useEnvironment(id) {
+    let entry = this.environments.get(id);
+    if (!entry) {
+      const env = createArenaEnvironment(id);
+      const effects = new Effects(env.scene);
+      effects.setCamera(env.camera);
+      entry = { ...env, effects, chase: new ChaseCamera(env.camera) };
+      this.environments.set(id, entry);
+    }
+    this.arenaId = id;
+    this.scene = entry.scene;
+    this.camera = entry.camera;
+    this.colliders = entry.colliders;
+    this.envUpdate = entry.update;
+    this.half = entry.half;
+    this.effects = entry.effects;
+    this.chase = entry.chase;
+    this.arenaDef = entry.def;
+  }
+
   /* ------------------------------------------------------------- setup */
 
   /**
    * Begin a match.
    * @param {object} playerLoadout
-   * @param {string} difficultyId
+   * @param {object} settings { difficulty, opponent, arena } - 'random' allowed
+   *                          for opponent and arena
    */
-  start(playerLoadout, difficultyId = 'veteran') {
+  start(playerLoadout, settings = {}) {
     this.reset();
 
-    this.difficulty = DIFFICULTIES.find((d) => d.id === difficultyId) || DIFFICULTIES[1];
-    const preset = ENEMY_PRESETS[this.difficulty.enemyIndex];
+    const diffId = typeof settings === 'string' ? settings : settings.difficulty;
+    this.difficulty = DIFFICULTIES.find((d) => d.id === diffId) || DIFFICULTIES[1];
+
+    const oppId = settings.opponent;
+    const preset =
+      !oppId || oppId === 'random'
+        ? ENEMY_PRESETS[Math.floor(Math.random() * ENEMY_PRESETS.length)]
+        : ENEMY_PRESETS.find((e) => e.id === oppId) || ENEMY_PRESETS[0];
+
+    const arenaId = settings.arena;
+    const chosenArena =
+      !arenaId || arenaId === 'random' ? ARENAS[Math.floor(Math.random() * ARENAS.length)].id : getArena(arenaId).id;
+    this._useEnvironment(chosenArena);
 
     this.player = new Fighter(playerLoadout, true, playerLoadout.name || 'PLAYER FRAME');
     this.enemy = new Fighter(preset, false, preset.name);
@@ -294,10 +377,13 @@ export class Arena {
     this.chase.distance = 14 + this.player.height * 0.35;
     this.chase.height = this.player.height * 0.72;
 
+    this._createFunnels(this.player);
+    this._createFunnels(this.enemy);
     this._initAi();
 
     this.hud.reset();
     this.hud.setNames(this.player.name, this.enemy.name);
+    this.hud.feed(`${this.arenaDef.name}`, 'warn');
     this.hud.feed('COMBAT START', 'warn');
 
     this.time = MATCH_TIME;
@@ -321,14 +407,22 @@ export class Arena {
     for (const p of this.projectiles) this._recycleProjectile(p);
     this.projectiles.length = 0;
     this.effects.clear();
-    if (this.player) {
-      disposeMech(this.player.mech);
-      this.player = null;
+    for (const f of [this.player, this.enemy]) {
+      if (!f) continue;
+      this._disposeFunnels(f);
+      for (const key of ['right', 'left', 'shoulder']) {
+        const w = f.weapons[key];
+        if (w && w.beamMesh) {
+          this.scene.remove(w.beamMesh);
+          w.beamMesh = null;
+        }
+      }
+      disposeMech(f.mech);
     }
-    if (this.enemy) {
-      disposeMech(this.enemy.mech);
-      this.enemy = null;
-    }
+    for (const m of this.funnelMats) m.dispose();
+    this.funnelMats.length = 0;
+    this.player = null;
+    this.enemy = null;
     this.running = false;
     this.finished = false;
     this.endTimer = 0;
@@ -337,11 +431,16 @@ export class Arena {
 
   dispose() {
     this.reset();
-    this.effects.dispose();
+    for (const entry of this.environments.values()) entry.effects.dispose();
+    this.environments.clear();
     for (const g of this.projGeo.values()) g.dispose();
     for (const m of this.projMat.values()) m.dispose();
     this.projGeo.clear();
     this.projMat.clear();
+    for (const m of this.beamMats.values()) m.dispose();
+    this.beamMats.clear();
+    if (this._beamGeo) this._beamGeo.dispose();
+    if (this._funnelGeo) this._funnelGeo.dispose();
   }
 
   setPaused(on) {
@@ -600,11 +699,12 @@ export class Arena {
       pos: origin.clone(),
       prev: origin.clone(),
       vel: dir.clone().multiplyScalar(speed),
-      life: Math.max(0.6, part.range / Math.max(20, speed) + 0.4),
+      life: Math.max(0.6, part.range / Math.max(20, speed) + (part.grav > 0 ? 3.2 : 0.4)),
       damage: part.damage,
       owner,
       target: targetFighter,
       homing: part.homing || 0,
+      grav: part.grav || 0,
       blast: part.blast || 0,
       color: part.tracer.color,
       radius: part.tracer.radius * 1.4,
@@ -651,6 +751,9 @@ export class Arena {
       return false;
     }
 
+    const damageMult = w.chargeMult;
+    const chargeFrac = w.chargeFrac;
+    w.chargeT = 0;
     w.cooldown = w.interval;
     if (w.usesAmmo) w.ammo -= 1;
     f.shotsFired += 1;
@@ -662,23 +765,38 @@ export class Arena {
     const target = f === this.player ? this.enemy : this.player;
     const spread = (part.spread || 0) * f.stats.spreadMult;
 
+    // Arcing ordnance solves its own launch angle so lobbed shells actually land.
+    const base = _v3.copy(aimPoint).sub(_v4);
+    if (base.lengthSq() < 0.0001) base.set(0, 0, -1);
+    if (part.grav > 0) {
+      const flat = Math.hypot(base.x, base.z);
+      const angle = ballisticAngle(flat, base.y, part.speed, part.grav, !!part.arcing);
+      if (angle !== null) {
+        const horiz = flat > 0.001 ? 1 / flat : 0;
+        base.set(base.x * horiz * Math.cos(angle), Math.sin(angle), base.z * horiz * Math.cos(angle));
+      }
+    }
+    base.normalize();
+
     for (let i = 0; i < Math.max(1, part.pellets); i++) {
-      const dir = _v.copy(aimPoint).sub(_v4);
-      if (dir.lengthSq() < 0.0001) dir.set(0, 0, -1);
-      dir.normalize();
-      const d = dir.clone();
+      const d = base.clone();
       scatter(d, spread);
-      this._spawnProjectile(f, part, _v4.clone(), d, target);
+      const p = this._spawnProjectile(f, part, _v4.clone(), d, target);
+      p.damage = part.damage * damageMult;
+      if (chargeFrac > 0.55) p.mesh.scale.set(1 + chargeFrac, 1 + chargeFrac, 1);
+      else p.mesh.scale.set(1, 1, 1);
     }
 
     // recoil + effects
-    punchRecoil(f.mech, slotName === 'left' ? 'left' : 'right', part.kind === 'ballistic' ? 0.9 : 0.55);
+    const kick = (part.kind === 'ballistic' ? 0.9 : 0.55) * (1 + chargeFrac * 0.8);
+    punchRecoil(f.mech, slotName === 'left' ? 'left' : 'right', kick);
     const fwd = _v2.copy(aimPoint).sub(_v4).normalize();
-    this.effects.muzzleFlash(_v4, fwd, part.tracer.color, part.kind === 'missile' ? 0.9 : 1.15);
+    this.effects.muzzleFlash(_v4, fwd, part.tracer.color, (part.kind === 'missile' ? 0.9 : 1.15) * (1 + chargeFrac));
+    if (f === this.player && chargeFrac > 0.5) this.chase.addShake(0.25 * chargeFrac);
 
     const near = this._audibility(f);
     if (near > 0.02) {
-      if (part.id === 'wp_railgun') audio.railShot();
+      if (part.id === 'wp_railgun' || part.charge) audio.railShot();
       else if (part.kind === 'beam') (part.rpm > 200 ? audio.pulseShot() : audio.beamShot());
       else if (part.kind === 'missile') audio.missileLaunch();
       else audio.ballisticShot();
@@ -686,6 +804,251 @@ export class Arena {
 
     if (w.usesAmmo && w.ammo <= 0) this.reload(f, slotName);
     return true;
+  }
+
+  /**
+   * Route a held trigger through the right firing model: charge capacitors,
+   * spin-up cadence, continuous beams, or a plain shot.
+   * @param {boolean} held is the trigger down this frame
+   */
+  _handleTrigger(f, slotName, held, aimPoint, dt) {
+    const w = f.weapons[slotName];
+    if (!w || !f.alive) return;
+    const part = w.part;
+
+    // gatling barrels wind up while held and coast back down
+    if (part.spinUp) {
+      const rate = dt / part.spinUp;
+      w.spin = THREE.MathUtils.clamp(w.spin + (held && !w.reloading ? rate : -rate * 1.4), 0, 1);
+      if (f === this.player) setSpin(f.mech, w.spin);
+    }
+
+    if (part.kind === 'laser') {
+      this._tickLaser(f, w, aimPoint, held, dt);
+      return;
+    }
+
+    if (part.charge > 0) {
+      if (held && !w.reloading && w.cooldown <= 0 && (!w.usesAmmo || w.ammo > 0)) {
+        w.chargeT = Math.min(part.charge, w.chargeT + dt);
+        if (f === this.player && w.chargeT >= part.charge && !w._chargeBeeped) {
+          w._chargeBeeped = true;
+          audio.uiConfirm();
+        }
+      } else if (!held && w.chargeT > 0.08) {
+        w._chargeBeeped = false;
+        this.fire(f, slotName, aimPoint);
+      } else if (!held) {
+        w.chargeT = 0;
+        w._chargeBeeped = false;
+      }
+      return;
+    }
+
+    if (held) this.fire(f, slotName, aimPoint);
+  }
+
+  /** Continuous hitscan beam: damage per second along a ray from the muzzle. */
+  _tickLaser(f, w, aimPoint, held, dt) {
+    const part = w.part;
+    const drain = part.energy * dt;
+    const firing = held && f.alive && f.energy > drain;
+
+    if (!firing) {
+      if (w.beamMesh) w.beamMesh.visible = false;
+      w.beamActive = false;
+      return;
+    }
+
+    f.energy -= drain;
+    f.energyLock = ENERGY_DELAY;
+    w.beamActive = true;
+
+    w.muzzle.getWorldPosition(_lz1);
+    _lz2.copy(aimPoint).sub(_lz1);
+    if (_lz2.lengthSq() < 0.0001) _lz2.set(0, 0, -1);
+    _lz2.normalize();
+
+    const target = f === this.player ? this.enemy : this.player;
+    let dist = part.range;
+    let hitTarget = false;
+
+    const world = this.castRay(_lz1, _lz2, part.range, this._laserOut || (this._laserOut = { t: 0, hit: false, normal: new THREE.Vector3() }));
+    if (world.hit) dist = Math.min(dist, world.t);
+
+    if (target && target.alive) {
+      const d = this._rayFighter(_lz1, _lz2, dist, target);
+      if (d !== null) {
+        dist = d;
+        hitTarget = true;
+      }
+    }
+
+    _lz3.copy(_lz1).addScaledVector(_lz2, dist);
+
+    if (hitTarget) {
+      this.applyDamage(target, part.damage * dt, _lz3, f, false);
+      f.shotsFired += dt * 8;
+      f.shotsHit += dt * 8;
+      if (Math.random() < dt * 22) this.effects.hitSpark(_lz3, part.tracer.color, 0.5);
+    } else {
+      f.shotsFired += dt * 8;
+      if (Math.random() < dt * 14) this.effects.impact(_lz3, world.hit ? world.normal : null, part.tracer.color, 0.35);
+    }
+
+    // beam body
+    if (!w.beamMesh) {
+      w.beamMesh = new THREE.Mesh(this._beamGeometry(), this._beamMaterial(part));
+      w.beamMesh.frustumCulled = false;
+      w.beamMesh.renderOrder = 3;
+      this.scene.add(w.beamMesh);
+    }
+    const beam = w.beamMesh;
+    beam.visible = true;
+    beam.position.copy(_lz1).addScaledVector(_lz2, dist * 0.5);
+    beam.lookAt(_lz3);
+    const flicker = 0.85 + Math.random() * 0.3;
+    beam.scale.set(part.beamWidth * flicker, part.beamWidth * flicker, dist);
+
+    if (Math.random() < dt * 30) this.effects.muzzleFlash(_lz1, _lz2, part.tracer.color, 0.5);
+    if (this._audibility(f) > 0.05 && Math.random() < dt * 6) audio.pulseShot();
+  }
+
+  _beamGeometry() {
+    if (!this._beamGeo) {
+      const g = new THREE.CylinderGeometry(1, 1, 1, 10, 1, true);
+      g.rotateX(-Math.PI / 2);
+      this._beamGeo = g;
+    }
+    return this._beamGeo;
+  }
+
+  _beamMaterial(part) {
+    let m = this.beamMats.get(part.id);
+    if (!m) {
+      m = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(part.tracer.color),
+        transparent: true,
+        opacity: 0.72,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+      this.beamMats.set(part.id, m);
+    }
+    return m;
+  }
+
+  /**
+   * Distance along a ray at which it enters a fighter's capsule.
+   * @returns {number|null}
+   */
+  _rayFighter(origin, dir, maxDist, f) {
+    _lz4.copy(origin).addScaledVector(dir, maxDist);
+    f.capsule(_lzA, _lzB);
+    const res = closestSegmentPoints(origin, _lz4, _lzA, _lzB, _lzC, _lzD);
+    const rad = f.radius;
+    if (res.distSq > rad * rad) return null;
+    return res.s * maxDist;
+  }
+
+  /* ------------------------------------------------------------ funnels */
+
+  _createFunnels(f) {
+    const spec = f.stats.funnels;
+    if (!spec) return;
+    if (!this._funnelGeo) {
+      const g = new THREE.ConeGeometry(0.36, 1.5, 4);
+      g.rotateX(-Math.PI / 2);
+      this._funnelGeo = g;
+    }
+    const mat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(f.mech.colors.glow),
+      emissive: new THREE.Color(f.mech.colors.glow),
+      emissiveIntensity: 2.4,
+      metalness: 0.3,
+      roughness: 0.3
+    });
+    this.funnelMats.push(mat);
+    f.funnelPart = getPart(spec.weapon);
+    f.funnels = [];
+    for (let i = 0; i < spec.count; i++) {
+      const m = new THREE.Mesh(this._funnelGeo, mat);
+      m.castShadow = false;
+      this.scene.add(m);
+      f.funnels.push({
+        mesh: m,
+        dock: f.mech.funnelDocks[i] || f.mech.funnelDocks[0],
+        angle: (i / spec.count) * Math.PI * 2,
+        height: 3 + (i % 2) * 3.5,
+        cooldown: 0.4 + i * 0.25
+      });
+    }
+  }
+
+  /** Toggle bit deployment; they cost energy to keep out. */
+  setFunnels(f, deployed) {
+    if (!f.funnels) return;
+    if (f.funnelsDeployed === deployed) return;
+    f.funnelsDeployed = deployed;
+    if (f.isPlayer) {
+      this.hud.feed(deployed ? 'FUNNELS DEPLOYED' : 'FUNNELS RECALLED', deployed ? '' : 'warn');
+      audio.uiConfirm();
+    }
+  }
+
+  _updateFunnels(f, dt) {
+    if (!f.funnels) return;
+    const spec = f.stats.funnels;
+    const target = f === this.player ? this.enemy : this.player;
+
+    if (f.funnelsDeployed) {
+      const drain = spec.drain * dt;
+      if (f.energy <= drain || !f.alive) {
+        this.setFunnels(f, false);
+      } else {
+        f.energy -= drain;
+        f.energyLock = ENERGY_DELAY;
+      }
+    }
+
+    f.center(_fn1);
+    for (const fn of f.funnels) {
+      if (f.funnelsDeployed && f.alive) {
+        fn.angle += dt * 1.15;
+        _fn2.set(
+          _fn1.x + Math.cos(fn.angle) * spec.radius,
+          _fn1.y + fn.height + Math.sin(fn.angle * 2) * 0.9,
+          _fn1.z + Math.sin(fn.angle) * spec.radius
+        );
+        fn.mesh.position.lerp(_fn2, 1 - Math.exp(-dt / 0.22));
+
+        if (target && target.alive) {
+          target.center(_fn3);
+          fn.mesh.lookAt(_fn3);
+          fn.cooldown -= dt;
+          if (fn.cooldown <= 0 && this.hasLineOfSight(fn.mesh.position, _fn3)) {
+            fn.cooldown = 60 / f.funnelPart.rpm + Math.random() * 0.4;
+            const dir = _fn4.subVectors(_fn3, fn.mesh.position).normalize().clone();
+            scatter(dir, f.funnelPart.spread);
+            this._spawnProjectile(f, f.funnelPart, fn.mesh.position.clone(), dir, target);
+            this.effects.muzzleFlash(fn.mesh.position, dir, f.funnelPart.tracer.color, 0.55);
+            f.shotsFired += 1;
+          }
+        }
+      } else {
+        // dock back onto the rack
+        fn.dock.getWorldPosition(_fn2);
+        fn.mesh.position.lerp(_fn2, 1 - Math.exp(-dt / 0.18));
+        fn.dock.getWorldQuaternion(_fnQ);
+        fn.mesh.quaternion.slerp(_fnQ, 1 - Math.exp(-dt / 0.18));
+      }
+    }
+  }
+
+  _disposeFunnels(f) {
+    if (!f || !f.funnels) return;
+    for (const fn of f.funnels) this.scene.remove(fn.mesh);
+    f.funnels = null;
   }
 
   _audibility(f) {
@@ -710,6 +1073,13 @@ export class Arena {
     const w = f.weapons[slotName];
     if (!f.spendEnergy(w.part.energy || 0)) return false;
     w.cooldown = w.interval;
+    // lances throw the whole frame forward behind the point
+    if (w.part.lunge) {
+      f.forward(_v);
+      f.vel.x += _v.x * w.part.lunge;
+      f.vel.z += _v.z * w.part.lunge;
+      if (f === this.player) this.chase.addShake(0.3);
+    }
     playMelee(f.mech, slotName);
     f.meleePending = { slot: slotName, timer: 0.18 };
     if (this._audibility(f) > 0.02) audio.melee();
@@ -805,6 +1175,11 @@ export class Arena {
   _destroy(f) {
     f.alive = false;
     f.deadTimer = 0;
+    this.setFunnels(f, false);
+    for (const key of ['right', 'left']) {
+      const w = f.weapons[key];
+      if (w && w.beamMesh) w.beamMesh.visible = false;
+    }
     f.center(_v);
     this.effects.explosion(_v, 0xffb45e, 2.4);
     this.effects.explosion(f.pos, 0xff6a3d, 1.8);
@@ -888,9 +1263,13 @@ export class Arena {
       if (f.energy <= 0) f.blocking = false;
     }
 
-    if (input.mouse.left) this.fire(f, 'right', this._aimPoint);
-    if (input.mouse.right && leftPart.kind !== 'shield') this.fire(f, 'left', this._aimPoint);
-    if (input.hit('KeyF') && f.weapons.shoulder) this.fire(f, 'shoulder', this._aimPoint);
+    this._handleTrigger(f, 'right', input.mouse.left, this._aimPoint, dt);
+    this._handleTrigger(f, 'left', input.mouse.right && leftPart.kind !== 'shield', this._aimPoint, dt);
+
+    if (input.hit('KeyF')) {
+      if (f.weapons.shoulder) this.fire(f, 'shoulder', this._aimPoint);
+      else if (f.funnels) this.setFunnels(f, !f.funnelsDeployed);
+    }
     if (input.hit('KeyR')) {
       this.reload(f, 'right');
       this.reload(f, 'left');
@@ -904,22 +1283,23 @@ export class Arena {
     const speed = stats.walkSpeed;
     let boosting = false;
 
-    // vertical
-    if (f.grounded) {
-      if (cmd.jump && f.energy > JUMP_COST) {
-        f.vel.y = JUMP_SPEED * stats.jumpPower;
-        f.spendEnergy(JUMP_COST);
-        f.grounded = false;
-        boosting = true;
-        if (this._audibility(f) > 0.05) audio.jump();
-      }
-    } else if (cmd.hover && f.energy > 0) {
+    // vertical: treads cannot leave the ground at all, hover skirts can rise
+    // from their float height without a jump
+    const hovering = stats.hoverHeight > 0;
+    if (f.grounded && cmd.jump && stats.canJump && f.energy > JUMP_COST) {
+      f.vel.y = JUMP_SPEED * stats.jumpPower;
+      f.spendEnergy(JUMP_COST);
+      f.grounded = false;
+      boosting = true;
+      if (this._audibility(f) > 0.05) audio.jump();
+    } else if (cmd.hover && stats.canThrust && (!f.grounded || hovering) && f.energy > 0) {
       const drain = HOVER_DRAIN * stats.thrustEfficiency * dt;
       if (f.energy > drain) {
         f.energy -= drain;
         f.energyLock = ENERGY_DELAY;
         f.vel.y += HOVER_THRUST * stats.boostPower * dt;
         f.vel.y = Math.min(f.vel.y, 16 * stats.boostPower);
+        f.grounded = false;
         boosting = true;
       }
     }
@@ -928,8 +1308,9 @@ export class Arena {
     f.dashCooldown = Math.max(0, f.dashCooldown - dt);
     if (cmd.dash && f.dashCooldown <= 0 && f.energy > DASH_COST) {
       const dir = moving ? _v4.copy(wish) : f.forward(_v4);
-      f.vel.x += dir.x * DASH_SPEED * stats.boostPower;
-      f.vel.z += dir.z * DASH_SPEED * stats.boostPower;
+      const power = DASH_SPEED * stats.boostPower * stats.dashBonus;
+      f.vel.x += dir.x * power;
+      f.vel.z += dir.z * power;
       if (!f.grounded) f.vel.y += 3;
       f.spendEnergy(DASH_COST);
       f.dashCooldown = DASH_COOLDOWN;
@@ -942,7 +1323,8 @@ export class Arena {
     f.boosting = boosting;
 
     // horizontal steering
-    const accel = (f.grounded ? GROUND_ACCEL : AIR_ACCEL) * dt;
+    // hover skirts have little grip, so they drift through direction changes
+    const accel = (f.grounded ? GROUND_ACCEL * stats.groundGrip : AIR_ACCEL) * dt;
     const targetX = moving ? wish.x * speed : 0;
     const targetZ = moving ? wish.z * speed : 0;
     const dvx = targetX - f.vel.x;
@@ -959,11 +1341,11 @@ export class Arena {
     f.pos.addScaledVector(f.vel, dt);
 
     // ground contact
-    const gy = this.groundHeightAt(f.pos.x, f.pos.z, f.radius);
+    const gy = this.groundHeightAt(f.pos.x, f.pos.z, f.radius) + stats.hoverHeight;
     f.groundY = gy;
     if (f.pos.y <= gy + 0.001) {
-      if (!f.grounded && f.vel.y < -6) {
-        this.effects.landingDust(_v.set(f.pos.x, gy, f.pos.z), 1 + Math.min(1.4, -f.vel.y / 26));
+      if (!f.grounded && f.vel.y < -6 && !hovering) {
+        this.effects.landingDust(_v.set(f.pos.x, gy - stats.hoverHeight, f.pos.z), 1 + Math.min(1.4, -f.vel.y / 26));
         if (this._audibility(f) > 0.05) audio.land(Math.min(1.5, -f.vel.y / 20));
         if (f.isPlayer) this.chase.addShake(Math.min(0.45, -f.vel.y / 60));
       }
@@ -983,7 +1365,7 @@ export class Arena {
     }
 
     // thruster particles
-    if (boosting || (!f.grounded && f.vel.y > -2)) {
+    if (boosting || (!f.grounded && f.vel.y > -2) || (hovering && Math.random() < 0.25)) {
       f._thrusterTick += dt;
       if (f._thrusterTick > 0.02) {
         f._thrusterTick = 0;
@@ -1016,7 +1398,8 @@ export class Arena {
       jumpTimer: 1 + Math.random() * 2,
       dodgeTimer: 0,
       burst: 0,
-      burstOpen: true
+      burstOpen: true,
+      leftOpen: true
     };
   }
 
@@ -1127,9 +1510,9 @@ export class Arena {
     ai.jumpTimer -= dt;
     if (ai.jumpTimer <= 0) {
       ai.jumpTimer = 2.4 + Math.random() * 3.5;
-      if (e.grounded && e.energy > e.maxEnergy * 0.45 && Math.random() < 0.35 + skill * 0.35) jump = true;
+      if (e.grounded && e.stats.canJump && e.energy > e.maxEnergy * 0.45 && Math.random() < 0.35 + skill * 0.35) jump = true;
     }
-    const hover = !e.grounded && e.vel.y < 0 && e.energy > e.maxEnergy * 0.3 && distY > 3;
+    const hover = e.stats.canThrust && !e.grounded && e.vel.y < 0 && e.energy > e.maxEnergy * 0.3 && distY > 3;
 
     this._applyMovement(e, wish, moving, dt, { jump, hover, dash });
 
@@ -1150,22 +1533,37 @@ export class Arena {
       if (ai.burst <= 0) {
         ai.burst = 0.35 + Math.random() * (1.5 - skill);
         ai.burstOpen = Math.random() < 0.3 + skill * 0.4;
+        ai.leftOpen = Math.random() < 0.45 + skill * 0.4;
       }
 
-      if (facing > 0.86 && ai.burstOpen) {
-        if (dist < rw.range * 1.05 && rw.kind !== 'melee') this.fire(e, 'right', aimAt);
-        const lw = e.weapons.left.part;
-        if (lw.kind !== 'none' && lw.kind !== 'shield' && lw.kind !== 'melee' && dist < lw.range * 1.05) {
-          if (Math.random() < 0.5 + skill * 0.4) this.fire(e, 'left', aimAt);
-        }
-        if (e.weapons.shoulder && dist < 120 && Math.random() < 0.012 + skill * 0.02) {
-          this.fire(e, 'shoulder', aimAt);
-        }
+      const wantRight = facing > 0.86 && ai.burstOpen && dist < rw.range * 1.05 && rw.kind !== 'melee';
+      const lw = e.weapons.left.part;
+      const wantLeft =
+        facing > 0.86 && ai.burstOpen && lw.kind !== 'none' && lw.kind !== 'shield' && lw.kind !== 'melee' && dist < lw.range * 1.05;
+
+      // charge weapons need the trigger held, so the AI commits for a beat
+      this._handleTrigger(e, 'right', wantRight, aimAt, dt);
+      this._handleTrigger(e, 'left', wantLeft && ai.leftOpen, aimAt, dt);
+
+      if (e.weapons.shoulder && dist < 120 && Math.random() < 0.012 + skill * 0.02) {
+        this.fire(e, 'shoulder', aimAt);
       }
 
       if (ai.meleeSlot && dist < e.weapons[ai.meleeSlot].part.range * 0.9 && facing > 0.8) {
         this.fire(e, ai.meleeSlot, aimAt);
       }
+    } else {
+      // no line of sight: release triggers so charges do not fire into cover
+      this._handleTrigger(e, 'right', false, e.center(this._aiAim), dt);
+      this._handleTrigger(e, 'left', false, this._aiAim, dt);
+    }
+
+    // bits stay out while the AI has the energy to run them
+    if (e.funnels) {
+      const wantOut = e.alive && los && dist < 130 && e.energy > e.maxEnergy * 0.4;
+      const pullIn = e.energy < e.maxEnergy * 0.18;
+      if (wantOut && !e.funnelsDeployed) this.setFunnels(e, true);
+      else if (pullIn && e.funnelsDeployed) this.setFunnels(e, false);
     }
 
     // blocking with a shield when hurt
@@ -1214,6 +1612,8 @@ export class Arena {
         cur.addScaledVector(desired, p.homing * dt).normalize();
         p.vel.copy(cur).multiplyScalar(speed);
       }
+
+      if (p.grav > 0) p.vel.y -= p.grav * dt;
 
       p.prev.copy(p.pos);
       p.pos.addScaledVector(p.vel, dt);
@@ -1318,6 +1718,7 @@ export class Arena {
 
     for (const f of [this.player, this.enemy]) {
       this._updateWeapons(f, dt);
+      this._updateFunnels(f, dt);
       if (!f.alive) {
         f.deadTimer += dt;
         // wreck settles onto the deck
@@ -1387,7 +1788,9 @@ export class Arena {
       ammoRightEmpty: rw.usesAmmo && rw.ammo === 0,
       ammoLeftEmpty: lw.usesAmmo && lw.ammo === 0,
       boosting: this.player.boosting,
-      locked: this._locked
+      locked: this._locked,
+      charge: Math.max(rw.chargeFrac, lw.chargeFrac),
+      funnels: this.player.funnels ? (this.player.funnelsDeployed ? 'OUT' : 'DOCKED') : null
     });
     this.hud.tick(dt);
 
