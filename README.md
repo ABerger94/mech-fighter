@@ -34,6 +34,11 @@ configuration: the framework is detected as Vite, the build command is
 
 ## How to play
 
+Works on desktop and on phones and tablets; the game picks the control scheme
+from the device and switches live if you start tapping a touchscreen.
+
+### Desktop
+
 | Input | Action |
 | --- | --- |
 | `W` `A` `S` `D` | Walk and strafe |
@@ -45,6 +50,25 @@ configuration: the framework is detected as Vite, the build command is
 | `F` | Fire backpack ordnance, or deploy/recall funnels |
 | `R` | Reload both arms |
 | `Esc` | Pause and release the mouse |
+
+### Touch
+
+| Input | Action |
+| --- | --- |
+| Left thumb | Drag anywhere on the left half; a stick appears where you touch |
+| Right thumb | Drag anywhere on the right half to aim and turn |
+| `FIRE` / `SUB` | Right-hand and left-hand weapons |
+| `BOOST` | Hold to jump and hover on thrusters |
+| `DASH` | Quick-boost in the direction you are moving |
+| `R` / `F` | Reload / backpack ordnance or funnels |
+| `II` | Pause |
+
+On a phone the garage becomes a single column: the parts list and the status
+panel slide up as bottom sheets from the bar along the bottom, and the frame
+preview keeps the whole screen behind them. Deploying asks for fullscreen and a
+landscape lock where the browser allows it, and a prompt appears if you are
+holding the device in portrait. Touch devices also render at a lower pixel
+ratio and shadow resolution to hold the frame rate.
 
 Center an enemy in the reticle and it turns red: that is a soft lock, and shots
 are led onto the target while it holds. Energy powers thrusters and beam
@@ -150,3 +174,6 @@ src/
   funnels and refuses to jump on legs that cannot.
 - Arenas are built on first use and cached, each with its own effects pool and
   camera rig, so switching battlefields between matches is instant.
+- Touch controls drive the same key and mouse state the keyboard and mouse
+  would, so the simulation contains no touch-specific branches. Pointer lock is
+  the desktop look gate; on touch the look pad stands in for it.

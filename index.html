@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="description" content="MECH FIGHTER - design, build, equip and battle custom mech suits in your browser." />
     <meta name="theme-color" content="#05070c" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%2305070c'/><path d='M6 8h20v6l-4 3v9h-4v-6h-4v6H10v-9l-4-3z' fill='%234de1ff'/></svg>" />
@@ -21,8 +24,10 @@
           <div class="title-actions">
             <button class="btn btn--primary" data-action="start">ENTER GARAGE</button>
             <button class="btn" data-action="how-to">CONTROLS</button>
+            <button class="btn touch-only" data-action="fullscreen">FULLSCREEN</button>
           </div>
-          <p class="title-foot">WASD move &middot; MOUSE aim &middot; SPACE boost &middot; LMB fire &middot; RMB melee</p>
+          <p class="title-foot desktop-only">WASD move &middot; MOUSE aim &middot; SPACE boost &middot; LMB fire &middot; RMB melee</p>
+          <p class="title-foot touch-only">LEFT THUMB moves &middot; RIGHT THUMB aims &middot; ON-SCREEN BUTTONS fire and boost</p>
         </div>
       </section>
 
@@ -81,6 +86,12 @@
             </div>
           </aside>
         </div>
+
+        <nav class="mobile-bar" id="mobile-bar">
+          <button data-sheet="left">PARTS</button>
+          <button data-sheet="right">STATUS</button>
+          <button data-sheet="deploy" class="mobile-bar-go">DEPLOY</button>
+        </nav>
       </section>
 
       <!-- ============================ HUD ============================ -->
@@ -119,7 +130,21 @@
         <div class="killfeed" id="killfeed"></div>
         <div class="hud-boost" id="hud-boost">BOOST</div>
 
-        <button class="btn btn--ghost hud-quit" data-action="abort">ABORT</button>
+        <div class="hud-hint desktop-only">ESC &middot; PAUSE</div>
+
+        <div class="touch-layer" id="touch-layer">
+          <div class="touch-stick" id="touch-stick"><i id="touch-stick-knob"></i></div>
+          <div class="touch-pad-hint">AIM</div>
+          <div class="touch-buttons">
+            <button class="tbtn tbtn--sm" data-touch="reload" aria-label="Reload">R</button>
+            <button class="tbtn tbtn--sm" data-touch="funnel" aria-label="Backpack">F</button>
+            <button class="tbtn tbtn--sm" data-touch="dash" aria-label="Dash">DASH</button>
+            <button class="tbtn tbtn--sub" data-touch="sub" aria-label="Left weapon">SUB</button>
+            <button class="tbtn tbtn--boost" data-touch="boost" aria-label="Boost">BOOST</button>
+            <button class="tbtn tbtn--fire" data-touch="fire" aria-label="Fire">FIRE</button>
+          </div>
+          <button class="tbtn tbtn--pause" data-touch="pause" aria-label="Pause">II</button>
+        </div>
 
         <div class="pause-overlay" id="pause-overlay">
           <div class="pause-card">
@@ -170,12 +195,27 @@
             <li><b>F</b> Fire backpack ordnance, or deploy and recall funnels</li>
             <li><b>R</b> Reload &middot; <b>ESC</b> Pause / release mouse</li>
           </ul>
+          <ul class="control-list control-list--big touch-only">
+            <li><b>LEFT THUMB</b> Drag anywhere on the left to walk and strafe</li>
+            <li><b>RIGHT THUMB</b> Drag anywhere on the right to aim and turn</li>
+            <li><b>FIRE / SUB</b> Right-hand and left-hand weapons</li>
+            <li><b>BOOST</b> Hold to jump and hover on thrusters</li>
+            <li><b>DASH</b> Quick-boost in the direction you are moving</li>
+            <li><b>R</b> Reload &middot; <b>F</b> Backpack ordnance or funnels</li>
+            <li><b>II</b> Pause the match</li>
+          </ul>
           <p class="hint">Energy powers boosting and beam weapons. Ballistic weapons use magazines. Heavier builds walk slower and drain thrusters faster.</p>
           <div class="title-actions">
             <button class="btn btn--primary" data-action="close-help">BACK</button>
           </div>
         </div>
       </section>
+
+      <div class="rotate-notice" id="rotate-notice">
+        <div class="rotate-icon"></div>
+        <p>ROTATE TO LANDSCAPE</p>
+        <span>The cockpit needs a wider view.</span>
+      </div>
 
       <div id="loading" class="loading"><span>INITIALISING FRAME DATA…</span></div>
     </div>
