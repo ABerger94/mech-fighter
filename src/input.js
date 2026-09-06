@@ -187,7 +187,7 @@ export class TouchControls {
     this.canvas = canvas;
     this.layer = layer;
     this.enabled = false;
-    this.lookSensitivity = 0.0042;
+    this.lookSensitivity = 0.0062;
     this.onPause = null;
 
     this.stick = layer.querySelector('#touch-stick');
