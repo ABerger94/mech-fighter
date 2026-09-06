@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="description" content="MECH FIGHTER - design, build, equip and battle custom mech suits in your browser." />
+    <meta name="theme-color" content="#05070c" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%2305070c'/><path d='M6 8h20v6l-4 3v9h-4v-6h-4v6H10v-9l-4-3z' fill='%234de1ff'/></svg>" />
+    <title>MECH FIGHTER // Custom Mech Combat</title>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="viewport"></canvas>
+
+      <!-- ============================ TITLE ============================ -->
+      <section id="screen-title" class="screen screen--center is-active">
+        <div class="title-block">
+          <p class="title-kicker">ORBITAL FRAME COMBAT SIMULATOR</p>
+          <h1 class="title-logo">MECH<span>FIGHTER</span></h1>
+          <p class="title-sub">Assemble a frame. Bolt on the guns. Walk into the arena.</p>
+          <div class="title-actions">
+            <button class="btn btn--primary" data-action="start">ENTER GARAGE</button>
+            <button class="btn" data-action="how-to">CONTROLS</button>
+          </div>
+          <p class="title-foot">WASD move &middot; MOUSE aim &middot; SPACE boost &middot; LMB fire &middot; RMB melee</p>
+        </div>
+      </section>
+
+      <!-- ============================ GARAGE ============================ -->
+      <section id="screen-garage" class="screen screen--garage">
+        <header class="garage-top">
+          <div class="brand">
+            <span class="brand-mark"></span>
+            <span class="brand-text">MECH<b>FIGHTER</b> <i>/ GARAGE</i></span>
+          </div>
+          <div class="garage-top-right">
+            <button class="btn btn--ghost" data-action="randomize">RANDOMIZE</button>
+            <button class="btn btn--ghost" data-action="reset-build">RESET</button>
+            <button class="btn btn--primary" data-action="deploy">DEPLOY &rsaquo;&rsaquo;</button>
+          </div>
+        </header>
+
+        <div class="garage-body">
+          <!-- LEFT: part selection -->
+          <aside class="panel panel--left">
+            <nav class="tabs" id="garage-tabs"></nav>
+            <div class="panel-scroll">
+              <div id="part-list" class="part-list"></div>
+            </div>
+          </aside>
+
+          <!-- CENTER: 3D viewport passthrough + build slots -->
+          <div class="garage-center">
+            <div class="slot-strip" id="slot-strip"></div>
+            <div class="viewport-hint">DRAG to rotate &middot; WHEEL to zoom</div>
+          </div>
+
+          <!-- RIGHT: stats + paint -->
+          <aside class="panel panel--right">
+            <div class="panel-scroll">
+              <h2 class="panel-title">FRAME STATUS</h2>
+              <div class="mech-name-row">
+                <label for="mech-name">CALLSIGN</label>
+                <input id="mech-name" type="text" maxlength="18" spellcheck="false" />
+              </div>
+              <div id="stat-list" class="stat-list"></div>
+
+              <h2 class="panel-title">PAINT SCHEME</h2>
+              <div id="paint-list" class="paint-list"></div>
+              <div class="preset-row" id="paint-presets"></div>
+
+              <h2 class="panel-title">DIFFICULTY</h2>
+              <div class="seg" id="difficulty-seg"></div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ============================ HUD ============================ -->
+      <section id="screen-hud" class="screen screen--hud">
+        <div class="hud-corner hud-corner--tl">
+          <div class="hud-label" id="hud-player-name">PLAYER</div>
+          <div class="bar bar--hp"><i id="bar-player-hp"></i><span id="txt-player-hp">0</span></div>
+          <div class="bar bar--en"><i id="bar-player-en"></i><span id="txt-player-en">0</span></div>
+          <div class="hud-sub">
+            <span id="hud-ammo-r">--</span>
+            <span id="hud-ammo-l">--</span>
+          </div>
+        </div>
+
+        <div class="hud-corner hud-corner--tr">
+          <div class="hud-label hud-label--enemy" id="hud-enemy-name">ENEMY</div>
+          <div class="bar bar--hp bar--enemy"><i id="bar-enemy-hp"></i><span id="txt-enemy-hp">0</span></div>
+          <div class="hud-dist"><span id="hud-distance">0</span> M</div>
+        </div>
+
+        <div class="hud-timer" id="hud-timer">03:00</div>
+
+        <div class="crosshair" id="crosshair">
+          <div class="crosshair-ring"></div>
+          <div class="crosshair-dot"></div>
+          <div class="crosshair-tick crosshair-tick--l"></div>
+          <div class="crosshair-tick crosshair-tick--r"></div>
+          <div class="crosshair-tick crosshair-tick--t"></div>
+          <div class="crosshair-tick crosshair-tick--b"></div>
+        </div>
+
+        <div class="lock-marker" id="lock-marker"></div>
+        <div class="damage-vignette" id="damage-vignette"></div>
+        <div class="killfeed" id="killfeed"></div>
+        <div class="hud-boost" id="hud-boost">BOOST</div>
+
+        <button class="btn btn--ghost hud-quit" data-action="abort">ABORT</button>
+
+        <div class="pause-overlay" id="pause-overlay">
+          <div class="pause-card">
+            <h2>PAUSED</h2>
+            <p>Click the arena to re-engage pointer lock.</p>
+            <div class="pause-actions">
+              <button class="btn btn--primary" data-action="resume">RESUME</button>
+              <button class="btn" data-action="abort">RETURN TO GARAGE</button>
+            </div>
+            <ul class="control-list">
+              <li><b>W A S D</b> Move</li>
+              <li><b>MOUSE</b> Aim / Turn</li>
+              <li><b>SPACE</b> Jump &amp; hover boost</li>
+              <li><b>SHIFT</b> Quick-boost dash</li>
+              <li><b>LMB</b> Fire right weapon</li>
+              <li><b>RMB</b> Fire left weapon / melee</li>
+              <li><b>R</b> Reload &middot; <b>ESC</b> Pause</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================ RESULT ============================ -->
+      <section id="screen-result" class="screen screen--center">
+        <div class="result-card">
+          <h2 id="result-title">MISSION COMPLETE</h2>
+          <p id="result-sub">Enemy frame destroyed.</p>
+          <div class="result-stats" id="result-stats"></div>
+          <div class="title-actions">
+            <button class="btn btn--primary" data-action="rematch">REMATCH</button>
+            <button class="btn" data-action="to-garage">RETURN TO GARAGE</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================ HELP ============================ -->
+      <section id="screen-help" class="screen screen--center">
+        <div class="result-card">
+          <h2>CONTROLS</h2>
+          <ul class="control-list control-list--big">
+            <li><b>W A S D</b> Walk / strafe</li>
+            <li><b>MOUSE</b> Aim and turn the frame</li>
+            <li><b>SPACE</b> Jump, hold to hover on thrusters</li>
+            <li><b>SHIFT</b> Quick-boost dash (burns fuel)</li>
+            <li><b>LMB</b> Fire right-hand weapon</li>
+            <li><b>RMB</b> Fire left-hand weapon (blades melee-strike)</li>
+            <li><b>R</b> Reload &middot; <b>ESC</b> Pause / release mouse</li>
+          </ul>
+          <p class="hint">Energy powers boosting and beam weapons. Ballistic weapons use magazines. Heavier builds walk slower and drain thrusters faster.</p>
+          <div class="title-actions">
+            <button class="btn btn--primary" data-action="close-help">BACK</button>
+          </div>
+        </div>
+      </section>
+
+      <div id="loading" class="loading"><span>INITIALISING FRAME DATA…</span></div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

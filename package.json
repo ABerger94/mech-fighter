@@ -1,0 +1,18 @@
+{
+  "name": "mech-fighter",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "A 3D browser game where you design, build, equip and battle custom mech suits.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4173"
+  },
+  "dependencies": {
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "vite": "^7.1.5"
+  }
+}
