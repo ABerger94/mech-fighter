@@ -17,6 +17,10 @@ export class Hud {
     this.enTxt = $('txt-player-en');
     this.enemyBar = $('bar-enemy-hp');
     this.enemyTxt = $('txt-enemy-hp');
+    this.chargeWrap = $('wrap-charge');
+    this.chargeBar = $('bar-charge');
+    this.chargeTxt = $('txt-charge');
+    this.funnels = $('hud-funnels');
     this.ammoR = $('hud-ammo-r');
     this.ammoL = $('hud-ammo-l');
     this.distance = $('hud-distance');
@@ -68,6 +72,22 @@ export class Hud {
     const ss = Math.floor(Math.max(0, s.time) % 60);
     this.timer.textContent = `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
     this.timer.classList.toggle('is-urgent', s.time < 30);
+
+    const charging = s.charge > 0.001;
+    this.chargeWrap.classList.toggle('is-on', charging);
+    if (charging) {
+      this.chargeBar.style.width = `${Math.min(1, s.charge) * 100}%`;
+      this.chargeWrap.classList.toggle('is-full', s.charge >= 0.999);
+      this.chargeTxt.textContent = s.charge >= 0.999 ? 'CHARGED' : 'CHARGING';
+    }
+
+    if (s.funnels) {
+      this.funnels.innerHTML = `BITS <b>${s.funnels}</b>`;
+      this.funnels.classList.toggle('is-active', s.funnels === 'OUT');
+    } else {
+      this.funnels.textContent = '';
+      this.funnels.classList.remove('is-active');
+    }
 
     this.boost.classList.toggle('is-on', !!s.boosting);
     this.crosshair.classList.toggle('is-locked', !!s.locked);

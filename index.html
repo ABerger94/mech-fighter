@@ -69,6 +69,13 @@
               <div id="paint-list" class="paint-list"></div>
               <div class="preset-row" id="paint-presets"></div>
 
+              <h2 class="panel-title">BATTLEFIELD</h2>
+              <div class="seg seg--wrap" id="arena-seg"></div>
+              <p class="seg-note" id="arena-note"></p>
+
+              <h2 class="panel-title">OPPONENT</h2>
+              <div class="opponent-list" id="opponent-list"></div>
+
               <h2 class="panel-title">DIFFICULTY</h2>
               <div class="seg" id="difficulty-seg"></div>
             </div>
@@ -82,9 +89,11 @@
           <div class="hud-label" id="hud-player-name">PLAYER</div>
           <div class="bar bar--hp"><i id="bar-player-hp"></i><span id="txt-player-hp">0</span></div>
           <div class="bar bar--en"><i id="bar-player-en"></i><span id="txt-player-en">0</span></div>
+          <div class="bar bar--charge" id="wrap-charge"><i id="bar-charge"></i><span id="txt-charge">CHARGE</span></div>
           <div class="hud-sub">
             <span id="hud-ammo-r">--</span>
             <span id="hud-ammo-l">--</span>
+            <span id="hud-funnels"></span>
           </div>
         </div>
 
@@ -127,7 +136,8 @@
               <li><b>SHIFT</b> Quick-boost dash</li>
               <li><b>LMB</b> Fire right weapon</li>
               <li><b>RMB</b> Fire left weapon / melee</li>
-              <li><b>R</b> Reload &middot; <b>ESC</b> Pause</li>
+              <li><b>F</b> Backpack ordnance / funnels</li>
+            <li><b>R</b> Reload &middot; <b>ESC</b> Pause</li>
             </ul>
           </div>
         </div>
@@ -157,6 +167,7 @@
             <li><b>SHIFT</b> Quick-boost dash (burns fuel)</li>
             <li><b>LMB</b> Fire right-hand weapon</li>
             <li><b>RMB</b> Fire left-hand weapon (blades melee-strike)</li>
+            <li><b>F</b> Fire backpack ordnance, or deploy and recall funnels</li>
             <li><b>R</b> Reload &middot; <b>ESC</b> Pause / release mouse</li>
           </ul>
           <p class="hint">Energy powers boosting and beam weapons. Ballistic weapons use magazines. Heavier builds walk slower and drain thrusters faster.</p>

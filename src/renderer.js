@@ -384,43 +384,190 @@ export class OrbitCamera {
 export const ARENA_HALF = 82;
 
 /**
- * Build the battle arena: grid deck, boundary walls, cover pillars and blocks.
- * Returns collider descriptions the physics step consumes.
+ * Battlefield definitions. Each entry drives sky, fog, deck, lighting, prop
+ * layout and ambient decoration; the construction code below is shared.
  */
-export function createArenaEnvironment() {
+export const ARENAS = [
+  {
+    id: 'orbital',
+    name: 'ORBITAL DECK',
+    blurb: 'Federation testing platform. Open sightlines, pillars for cover.',
+    sky: [0x0a1830, 0x123049, 0x03060b],
+    fog: { color: 0x0a1522, near: 90, far: 300 },
+    deck: { color: 0x223b52, grid: [0x2f7f9c, 0x1b4457], gridOpacity: 0.55, strips: 0x2ee6ff },
+    wall: { color: 0x2b3f52, trim: 0x4de1ff, height: 26 },
+    tower: { color: 0x263646, beacon: 0xff5e5e },
+    light: {
+      hemi: [0x8fc0e0, 0x1a2430, 1.5], ambient: [0x486a88, 0.55],
+      sun: [0xfff0d8, 2.6, [70, 110, 40]],
+      bounce: [0x5f9dff, 1.25, [-70, 55, -80]],
+      rim: [0xffb673, 0.85, [-40, 30, 90]]
+    },
+    decor: 'drones',
+    props: orbitalProps
+  },
+  {
+    id: 'canyon',
+    name: 'CANYON RUINS',
+    blurb: 'Sun-blasted rock spires. Broken ground, long shadows, hot light.',
+    sky: [0x4a6b96, 0xd9a06a, 0x2b1d16],
+    fog: { color: 0xc79a68, near: 110, far: 340 },
+    deck: { color: 0x8a6b46, grid: [0x6d5236, 0x5c4630], gridOpacity: 0.18, strips: 0 },
+    wall: { color: 0x77593a, trim: 0xd9a45c, height: 34 },
+    tower: { color: 0x6b4f34, beacon: 0xffd08a },
+    light: {
+      hemi: [0xffdcb4, 0x5a4530, 1.0], ambient: [0xe8d8c8, 0.35],
+      sun: [0xfff2d8, 2.9, [90, 80, -60]],
+      bounce: [0xd88f4a, 0.9, [-80, 40, 70]],
+      rim: [0x7fb0ff, 0.5, [-30, 60, -90]]
+    },
+    decor: 'dust',
+    props: canyonProps
+  },
+  {
+    id: 'city',
+    name: 'NEON CITY',
+    blurb: 'Flooded downtown grid. Tight lanes between towers, neon everywhere.',
+    sky: [0x140a24, 0x2a1140, 0x05030a],
+    fog: { color: 0x160a26, near: 60, far: 230 },
+    deck: { color: 0x2b2542, grid: [0x8b5fc0, 0x43306d], gridOpacity: 0.45, strips: 0xff4dd2 },
+    wall: { color: 0x3a2c58, trim: 0xff4dd2, height: 40 },
+    tower: { color: 0x322852, beacon: 0x4de1ff },
+    light: {
+      hemi: [0xa98fe0, 0x241a38, 1.7], ambient: [0x8d6fc0, 0.85],
+      sun: [0xd9c8ff, 2.4, [-60, 100, 70]],
+      bounce: [0xff7ad8, 1.5, [70, 40, -60]],
+      rim: [0x6ee8ff, 1.3, [-70, 35, -70]]
+    },
+    decor: 'signs',
+    props: cityProps
+  }
+];
+
+export function getArena(id) {
+  return ARENAS.find((a) => a.id === id) || ARENAS[0];
+}
+
+/* ---------------------------------------------------------- prop layouts */
+
+/** @returns {{kind:string,x:number,z:number,r?:number,hx?:number,hz?:number,h:number,style?:string}[]} */
+function orbitalProps() {
+  const props = [];
+  const pillars = [
+    [-34, -34], [34, -34], [-34, 34], [34, 34],
+    [0, -46], [0, 46], [-46, 0], [46, 0],
+    [-20, 12], [20, -12]
+  ];
+  for (const [x, z] of pillars) {
+    props.push({ kind: 'cyl', x, z, r: 3.1, h: 15 + ((x * 7 + z * 13) % 9), style: 'pillar' });
+  }
+  const blocks = [
+    [-14, -26, 7, 4, 6], [14, 26, 7, 4, 6],
+    [-52, -18, 5, 9, 8], [52, 18, 5, 9, 8],
+    [26, -50, 9, 5, 5.5], [-26, 50, 9, 5, 5.5],
+    [-8, 8, 4, 4, 9], [8, -8, 4, 4, 9],
+    [-60, 48, 6, 6, 11], [60, -48, 6, 6, 11]
+  ];
+  for (const [x, z, hx, hz, h] of blocks) props.push({ kind: 'box', x, z, hx, hz, h, style: 'crate' });
+  return props;
+}
+
+function canyonProps() {
+  const props = [];
+  // rock spires ringing the bowl, tapering toward the top
+  const spires = [
+    [-40, -30, 5.5, 26], [38, -36, 4.4, 21], [-44, 30, 6.2, 30], [44, 34, 5.0, 24],
+    [0, -52, 4.8, 23], [-6, 52, 5.6, 27], [-56, 4, 5.2, 25], [56, -6, 4.6, 22],
+    [-18, -8, 3.4, 15], [20, 10, 3.8, 17], [-26, 40, 3.2, 13], [30, -44, 3.6, 16]
+  ];
+  for (const [x, z, r, h] of spires) props.push({ kind: 'cyl', x, z, r, h, style: 'spire' });
+  // fallen slabs and mesas
+  const slabs = [
+    [-12, 24, 9, 5, 4.5], [16, -22, 8, 6, 5.5],
+    [-50, -50, 11, 7, 9], [50, 50, 10, 8, 8],
+    [34, 4, 5, 11, 6.5], [-34, -4, 5, 11, 6.5],
+    [0, 0, 7, 7, 3.4], [-60, 26, 6, 9, 12], [60, -26, 6, 9, 12]
+  ];
+  for (const [x, z, hx, hz, h] of slabs) props.push({ kind: 'box', x, z, hx, hz, h, style: 'mesa' });
+  return props;
+}
+
+function cityProps() {
+  const props = [];
+  // a lane grid of towers, with gaps that form shooting corridors
+  const coords = [-56, -34, -12, 12, 34, 56];
+  for (const x of coords) {
+    for (const z of coords) {
+      if (Math.abs(x) < 14 && Math.abs(z) < 14) continue; // keep the centre open
+      const seed = Math.abs(x * 31 + z * 17);
+      if (seed % 7 === 0) continue; // knocked-down block
+      const hx = 6 + (seed % 3);
+      const hz = 6 + ((seed >> 2) % 3);
+      const h = 16 + (seed % 5) * 6;
+      props.push({ kind: 'box', x, z, hx, hz, h, style: 'tower' });
+    }
+  }
+  // low barricades in the open middle
+  const bars = [[-6, -20, 6, 2, 3.5], [6, 20, 6, 2, 3.5], [-20, 6, 2, 6, 3.5], [20, -6, 2, 6, 3.5]];
+  for (const [x, z, hx, hz, h] of bars) props.push({ kind: 'box', x, z, hx, hz, h, style: 'barricade' });
+  return props;
+}
+
+/* ====================================================================== */
+/*  Arena environment                                                     */
+/* ====================================================================== */
+
+/**
+ * Build a battle arena from its definition: deck, boundary, cover and lights.
+ * Returns collider descriptions the physics step consumes.
+ * @param {string} arenaId
+ */
+export function createArenaEnvironment(arenaId = 'orbital') {
+  const def = getArena(arenaId);
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0x0a1522, 90, 300);
+  scene.fog = new THREE.Fog(def.fog.color, def.fog.near, def.fog.far);
 
   const camera = new THREE.PerspectiveCamera(62, 1, 0.35, 900);
-
-  scene.add(makeSky(600, 0x0a1830, 0x123049, 0x03060b));
+  scene.add(makeSky(600, def.sky[0], def.sky[1], def.sky[2]));
 
   /** @type {{type:string,x:number,z:number,hx?:number,hz?:number,r?:number,h:number}[]} */
   const colliders = [];
 
   // ------------------------------------------------ deck
-  const deckMat = new THREE.MeshStandardMaterial({ color: 0x223b52, metalness: 0.45, roughness: 0.78 });
+  const deckMat = new THREE.MeshStandardMaterial({ color: def.deck.color, metalness: 0.35, roughness: 0.82 });
   const deck = new THREE.Mesh(new THREE.BoxGeometry(ARENA_HALF * 2, 1.6, ARENA_HALF * 2), deckMat);
   deck.position.y = -0.8;
   deck.receiveShadow = true;
   scene.add(deck);
 
-  const grid = new THREE.GridHelper(ARENA_HALF * 2, 48, 0x2f7f9c, 0x1b4457);
+  const grid = new THREE.GridHelper(ARENA_HALF * 2, 48, def.deck.grid[0], def.deck.grid[1]);
   grid.position.y = 0.02;
   grid.material.transparent = true;
-  grid.material.opacity = 0.55;
+  grid.material.opacity = def.deck.gridOpacity;
   scene.add(grid);
 
-  // glowing centre circle
-  const centre = new THREE.Mesh(new THREE.RingGeometry(11.6, 12.2, 72), new THREE.MeshBasicMaterial({ color: 0x4de1ff, transparent: true, opacity: 0.35, side: THREE.DoubleSide }));
+  const centre = new THREE.Mesh(
+    new THREE.RingGeometry(11.6, 12.2, 72),
+    new THREE.MeshBasicMaterial({ color: def.wall.trim, transparent: true, opacity: 0.32, side: THREE.DoubleSide })
+  );
   centre.rotation.x = -Math.PI / 2;
   centre.position.y = 0.04;
   scene.add(centre);
 
-  // ------------------------------------------------ boundary walls
-  const wallMat = new THREE.MeshStandardMaterial({ color: 0x2b3f52, metalness: 0.55, roughness: 0.6 });
-  const wallTrim = neonMat(0x4de1ff, 2.2);
-  const WALL_H = 26;
+  if (def.deck.strips) {
+    const stripMat = new THREE.MeshBasicMaterial({ color: def.deck.strips, transparent: true, opacity: 0.45 });
+    for (let i = -3; i <= 3; i++) {
+      const strip = new THREE.Mesh(new THREE.PlaneGeometry(0.35, ARENA_HALF * 1.8), stripMat);
+      strip.rotation.x = -Math.PI / 2;
+      strip.position.set(i * 22, 0.03, 0);
+      scene.add(strip);
+    }
+  }
+
+  // ------------------------------------------------ boundary
+  const wallMat = new THREE.MeshStandardMaterial({ color: def.wall.color, metalness: 0.45, roughness: 0.65 });
+  const wallTrim = neonMat(def.wall.trim, 2.0);
+  const WALL_H = def.wall.height;
   const wallDefs = [
     { x: 0, z: -ARENA_HALF, hx: ARENA_HALF, hz: 2 },
     { x: 0, z: ARENA_HALF, hx: ARENA_HALF, hz: 2 },
@@ -444,8 +591,7 @@ export function createArenaEnvironment() {
     colliders.push({ type: 'box', x: w.x, z: w.z, hx: w.hx, hz: w.hz, h: WALL_H });
   }
 
-  // corner towers
-  const towerMat = new THREE.MeshStandardMaterial({ color: 0x263646, metalness: 0.6, roughness: 0.55 });
+  const towerMat = new THREE.MeshStandardMaterial({ color: def.tower.color, metalness: 0.5, roughness: 0.6 });
   for (const sx of [-1, 1]) {
     for (const sz of [-1, 1]) {
       const t = new THREE.Mesh(new THREE.CylinderGeometry(6.5, 8, 34, 8), towerMat);
@@ -453,97 +599,125 @@ export function createArenaEnvironment() {
       t.castShadow = true;
       t.receiveShadow = true;
       scene.add(t);
-      const beacon = new THREE.Mesh(new THREE.SphereGeometry(1.1, 12, 10), neonMat(0xff5e5e, 3.2));
+      const beacon = new THREE.Mesh(new THREE.SphereGeometry(1.1, 12, 10), neonMat(def.tower.beacon, 3.2));
       beacon.position.set(t.position.x, 35, t.position.z);
       scene.add(beacon);
       colliders.push({ type: 'cyl', x: t.position.x, z: t.position.z, r: 7.2, h: 34 });
     }
   }
 
-  // ------------------------------------------------ cover: pillars
-  const pillarMat = new THREE.MeshStandardMaterial({ color: 0x39506a, metalness: 0.45, roughness: 0.6 });
-  const pillarTrim = neonMat(0x38d6ff, 1.8);
-  const pillarSpots = [
-    [-34, -34], [34, -34], [-34, 34], [34, 34],
-    [0, -46], [0, 46], [-46, 0], [46, 0],
-    [-20, 12], [20, -12]
-  ];
-  for (const [px, pz] of pillarSpots) {
-    const h = 15 + ((px * 7 + pz * 13) % 9);
-    const r = 3.1;
-    const p = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.86, r, h, 10), pillarMat);
-    p.position.set(px, h / 2, pz);
-    p.castShadow = true;
-    p.receiveShadow = true;
-    scene.add(p);
+  // ------------------------------------------------ cover
+  const pillarMat = new THREE.MeshStandardMaterial({
+    color: def.id === 'canyon' ? 0x9d7448 : def.id === 'city' ? 0x483a70 : 0x39506a,
+    metalness: def.id === 'canyon' ? 0.05 : 0.4,
+    roughness: def.id === 'canyon' ? 0.95 : 0.6,
+    flatShading: def.id === 'canyon'
+  });
+  const blockMat = new THREE.MeshStandardMaterial({
+    color: def.id === 'canyon' ? 0xb08a5c : def.id === 'city' ? 0x53437f : 0x40566e,
+    metalness: def.id === 'canyon' ? 0.05 : 0.35,
+    roughness: def.id === 'canyon' ? 0.95 : 0.72,
+    flatShading: def.id === 'canyon'
+  });
+  const trimMat = neonMat(def.id === 'city' ? 0xff4dd2 : def.id === 'canyon' ? 0xffd08a : 0xffab4d, def.id === 'canyon' ? 0.6 : 1.6);
+  const trimMat2 = neonMat(def.id === 'city' ? 0x4de1ff : def.wall.trim, 1.8);
 
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.92, r * 0.92, 0.42, 10), pillarTrim);
-    band.position.set(px, h - 1.6, pz);
-    scene.add(band);
+  for (const p of def.props()) {
+    if (p.kind === 'cyl') {
+      const segs = p.style === 'spire' ? 7 : 10;
+      const taper = p.style === 'spire' ? 0.45 : 0.86;
+      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(p.r * taper, p.r, p.h, segs), pillarMat);
+      mesh.position.set(p.x, p.h / 2, p.z);
+      mesh.rotation.y = (p.x + p.z) * 0.1;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      scene.add(mesh);
 
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.25, r * 0.9, 1.1, 10), pillarMat);
-    cap.position.set(px, h + 0.4, pz);
-    cap.castShadow = true;
-    scene.add(cap);
+      if (p.style === 'pillar') {
+        const band = new THREE.Mesh(new THREE.CylinderGeometry(p.r * 0.92, p.r * 0.92, 0.42, segs), trimMat2);
+        band.position.set(p.x, p.h - 1.6, p.z);
+        scene.add(band);
+        const cap = new THREE.Mesh(new THREE.CylinderGeometry(p.r * 1.25, p.r * 0.9, 1.1, segs), pillarMat);
+        cap.position.set(p.x, p.h + 0.4, p.z);
+        cap.castShadow = true;
+        scene.add(cap);
+      } else {
+        // a smaller boulder at the base to break the silhouette
+        const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(p.r * 0.7, 0), blockMat);
+        rock.position.set(p.x + p.r * 1.2, p.r * 0.35, p.z - p.r * 0.8);
+        rock.rotation.set(p.x, p.z, 0.4);
+        rock.castShadow = true;
+        rock.receiveShadow = true;
+        scene.add(rock);
+      }
+      colliders.push({ type: 'cyl', x: p.x, z: p.z, r: p.r, h: p.h });
+    } else {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(p.hx * 2, p.h, p.hz * 2), blockMat);
+      mesh.position.set(p.x, p.h / 2, p.z);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      scene.add(mesh);
 
-    colliders.push({ type: 'cyl', x: px, z: pz, r, h });
+      if (p.style === 'tower') {
+        // neon window bands up the face
+        for (let i = 1; i < Math.floor(p.h / 6); i++) {
+          const band = new THREE.Mesh(
+            new THREE.BoxGeometry(p.hx * 2 * 1.02, 0.5, p.hz * 2 * 0.5),
+            i % 2 ? trimMat : trimMat2
+          );
+          band.position.set(p.x, i * 6, p.z);
+          scene.add(band);
+        }
+        const crown = new THREE.Mesh(new THREE.BoxGeometry(p.hx * 0.7, 1.2, p.hz * 0.7), trimMat2);
+        crown.position.set(p.x, p.h + 0.6, p.z);
+        scene.add(crown);
+      } else if (p.style !== 'mesa') {
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(p.hx * 2 * 1.01, 0.35, p.hz * 2 * 0.4), trimMat);
+        stripe.position.set(p.x, p.h - 0.9, p.z);
+        scene.add(stripe);
+      }
+      colliders.push({ type: 'box', x: p.x, z: p.z, hx: p.hx, hz: p.hz, h: p.h });
+    }
   }
 
-  // ------------------------------------------------ cover: crates and blocks
-  const blockMat = new THREE.MeshStandardMaterial({ color: 0x40566e, metalness: 0.4, roughness: 0.72 });
-  const blockTrim = neonMat(0xffab4d, 1.5);
-  const blockSpots = [
-    [-14, -26, 7, 4, 6],
-    [14, 26, 7, 4, 6],
-    [-52, -18, 5, 9, 8],
-    [52, 18, 5, 9, 8],
-    [26, -50, 9, 5, 5.5],
-    [-26, 50, 9, 5, 5.5],
-    [-8, 8, 4, 4, 9],
-    [8, -8, 4, 4, 9],
-    [-60, 48, 6, 6, 11],
-    [60, -48, 6, 6, 11]
-  ];
-  for (const [bx, bz, hx, hz, h] of blockSpots) {
-    const b = new THREE.Mesh(new THREE.BoxGeometry(hx * 2, h, hz * 2), blockMat);
-    b.position.set(bx, h / 2, bz);
-    b.castShadow = true;
-    b.receiveShadow = true;
-    scene.add(b);
-
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(hx * 2 * 1.01, 0.35, hz * 2 * 0.4), blockTrim);
-    stripe.position.set(bx, h - 0.9, bz);
-    scene.add(stripe);
-
-    colliders.push({ type: 'box', x: bx, z: bz, hx, hz, h });
-  }
-
-  // ------------------------------------------------ ambient detail
-  // floor light strips running down the middle
-  const stripMat = new THREE.MeshBasicMaterial({ color: 0x2ee6ff, transparent: true, opacity: 0.5 });
-  for (let i = -3; i <= 3; i++) {
-    const s = new THREE.Mesh(new THREE.PlaneGeometry(0.35, ARENA_HALF * 1.8), stripMat);
-    s.rotation.x = -Math.PI / 2;
-    s.position.set(i * 22, 0.03, 0);
-    scene.add(s);
-  }
-
-  // hovering marker drones (pure decoration, animated in update)
-  const drones = [];
-  const droneMat = neonMat(0xffd166, 2.6);
-  for (let i = 0; i < 8; i++) {
-    const d = new THREE.Mesh(new THREE.OctahedronGeometry(0.85, 0), droneMat);
-    d.position.set(Math.cos(i) * 55, 22 + (i % 3) * 6, Math.sin(i * 1.7) * 55);
-    scene.add(d);
-    drones.push({ mesh: d, phase: i * 0.9, radius: 40 + i * 4, y: d.position.y, speed: 0.12 + i * 0.015 });
+  // ------------------------------------------------ ambient decoration
+  const movers = [];
+  if (def.decor === 'drones') {
+    const droneMat = neonMat(0xffd166, 2.6);
+    for (let i = 0; i < 8; i++) {
+      const d = new THREE.Mesh(new THREE.OctahedronGeometry(0.85, 0), droneMat);
+      d.position.set(Math.cos(i) * 55, 22 + (i % 3) * 6, Math.sin(i * 1.7) * 55);
+      scene.add(d);
+      movers.push({ mesh: d, phase: i * 0.9, radius: 40 + i * 4, y: d.position.y, speed: 0.12 + i * 0.015, spin: 1.6 });
+    }
+  } else if (def.decor === 'dust') {
+    const dustMat = new THREE.MeshBasicMaterial({ color: 0xe8c79a, transparent: true, opacity: 0.28 });
+    for (let i = 0; i < 26; i++) {
+      const d = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.6), dustMat);
+      d.position.set((Math.random() - 0.5) * 150, 3 + Math.random() * 26, (Math.random() - 0.5) * 150);
+      scene.add(d);
+      movers.push({ mesh: d, phase: Math.random() * 6.3, radius: 30 + Math.random() * 40, y: d.position.y, speed: 0.05 + Math.random() * 0.06, spin: 0.2, billboard: true });
+    }
+  } else {
+    // hovering holo-signs drifting between the towers
+    const signColors = [0xff4dd2, 0x4de1ff, 0xffd166];
+    for (let i = 0; i < 10; i++) {
+      const mat = new THREE.MeshBasicMaterial({ color: signColors[i % 3], transparent: true, opacity: 0.34, side: THREE.DoubleSide });
+      const d = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 0.85), mat);
+      d.position.set((Math.random() - 0.5) * 130, 26 + Math.random() * 22, (Math.random() - 0.5) * 130);
+      d.rotation.y = Math.random() * Math.PI;
+      scene.add(d);
+      movers.push({ mesh: d, phase: i, radius: 35 + i * 5, y: d.position.y, speed: 0.04 + i * 0.006, spin: 0.12 });
+    }
   }
 
   // ------------------------------------------------ lighting
-  scene.add(new THREE.HemisphereLight(0x8fc0e0, 0x1a2430, 1.5));
-  scene.add(new THREE.AmbientLight(0x486a88, 0.55));
+  const L = def.light;
+  scene.add(new THREE.HemisphereLight(L.hemi[0], L.hemi[1], L.hemi[2]));
+  scene.add(new THREE.AmbientLight(L.ambient[0], L.ambient[1]));
 
-  const sun = new THREE.DirectionalLight(0xfff0d8, 2.6);
-  sun.position.set(70, 110, 40);
+  const sun = new THREE.DirectionalLight(L.sun[0], L.sun[1]);
+  sun.position.set(...L.sun[2]);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.camera.near = 20;
@@ -556,27 +730,30 @@ export function createArenaEnvironment() {
   sun.shadow.normalBias = 0.04;
   scene.add(sun, sun.target);
 
-  // cool counter-light so the shadowed side of every frame stays readable
-  const bounce = new THREE.DirectionalLight(0x5f9dff, 1.25);
-  bounce.position.set(-70, 55, -80);
+  const bounce = new THREE.DirectionalLight(L.bounce[0], L.bounce[1]);
+  bounce.position.set(...L.bounce[2]);
   scene.add(bounce);
 
-  const rimLight = new THREE.DirectionalLight(0xffb673, 0.85);
-  rimLight.position.set(-40, 30, 90);
+  const rimLight = new THREE.DirectionalLight(L.rim[0], L.rim[1]);
+  rimLight.position.set(...L.rim[2]);
   scene.add(rimLight);
 
   const update = (dt, t) => {
-    for (const d of drones) {
+    for (const d of movers) {
       d.phase += dt * d.speed;
       d.mesh.position.x = Math.cos(d.phase) * d.radius;
       d.mesh.position.z = Math.sin(d.phase) * d.radius;
       d.mesh.position.y = d.y + Math.sin(t * 1.2 + d.phase * 3) * 1.4;
-      d.mesh.rotation.y += dt * 1.6;
-      d.mesh.rotation.x += dt * 0.8;
+      if (d.billboard) {
+        d.mesh.rotation.y = -d.phase;
+      } else {
+        d.mesh.rotation.y += dt * d.spin;
+        d.mesh.rotation.x += dt * d.spin * 0.5;
+      }
     }
   };
 
-  return { scene, camera, colliders, update, sun, half: ARENA_HALF };
+  return { scene, camera, colliders, update, sun, half: ARENA_HALF, def };
 }
 
 /* ====================================================================== */

@@ -8,6 +8,7 @@
 
 import { createGarageEnvironment, OrbitCamera } from './renderer.js';
 import { buildMech, disposeMech, applyColors, poseGarage } from './mech.js';
+import { ARENAS } from './renderer.js';
 import {
   CATALOG,
   SLOT_ORDER,
@@ -16,7 +17,10 @@ import {
   PAINT_SLOTS,
   PAINT_PRESETS,
   DIFFICULTIES,
+  ENEMY_PRESETS,
   DEFAULT_LOADOUT,
+  weaponDps,
+  getPart,
   computeStats,
   statRows,
   resolveLoadout
@@ -43,6 +47,8 @@ export class Garage {
 
     this.loadout = this._load();
     this.difficulty = this.loadout.difficulty || 'veteran';
+    this.arena = this.loadout.arena || 'orbital';
+    this.opponent = this.loadout.opponent || 'nemesis';
     this.activeSlot = 'torso';
     this.mech = null;
     this.time = 0;
@@ -52,6 +58,7 @@ export class Garage {
     this._buildTabs();
     this._buildSlotStrip();
     this._buildPaintUi();
+    this._buildDeploymentUi();
     this._buildDifficultyUi();
     this._bindActions();
 
@@ -72,6 +79,9 @@ export class Garage {
       for (const slot of SLOT_ORDER) {
         if (!CATALOG[slot].some((p) => p.id === out[slot])) out[slot] = base[slot];
       }
+      if (out.arena !== 'random' && !ARENAS.some((a) => a.id === out.arena)) out.arena = 'orbital';
+      if (out.opponent !== 'random' && !ENEMY_PRESETS.some((e) => e.id === out.opponent)) out.opponent = 'nemesis';
+      if (!DIFFICULTIES.some((d) => d.id === out.difficulty)) out.difficulty = 'veteran';
       return out;
     } catch (err) {
       return base;
@@ -82,7 +92,7 @@ export class Garage {
     try {
       window.localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ ...this.loadout, difficulty: this.difficulty })
+        JSON.stringify({ ...this.loadout, difficulty: this.difficulty, arena: this.arena, opponent: this.opponent })
       );
     } catch (err) {
       /* storage unavailable (private mode) - the build simply is not persisted */
@@ -95,6 +105,11 @@ export class Garage {
 
   getDifficulty() {
     return this.difficulty;
+  }
+
+  /** Everything the arena needs to stage a match. */
+  getSettings() {
+    return { difficulty: this.difficulty, arena: this.arena, opponent: this.opponent };
   }
 
   /* --------------------------------------------------------------- DOM */
@@ -110,6 +125,9 @@ export class Garage {
       paintList: $('paint-list'),
       presets: $('paint-presets'),
       difficulty: $('difficulty-seg'),
+      arenaSeg: $('arena-seg'),
+      arenaNote: $('arena-note'),
+      opponentList: $('opponent-list'),
       nameInput: $('mech-name')
     };
     this.dom.nameInput.value = this.loadout.name;
@@ -213,6 +231,92 @@ export class Garage {
     }
   }
 
+  _buildDeploymentUi() {
+    // battlefield picker
+    this.dom.arenaSeg.innerHTML = '';
+    this.arenaButtons = [];
+    const arenaOptions = [...ARENAS.map((a) => ({ id: a.id, label: a.name, blurb: a.blurb })),
+      { id: 'random', label: 'RANDOM', blurb: 'A battlefield is drawn at deployment.' }];
+    for (const opt of arenaOptions) {
+      const b = document.createElement('button');
+      b.textContent = opt.label;
+      b.dataset.id = opt.id;
+      b.addEventListener('click', () => {
+        this.arena = opt.id;
+        audio.uiClick();
+        this._syncDeployment();
+        this.save();
+      });
+      this.dom.arenaSeg.appendChild(b);
+      this.arenaButtons.push({ button: b, blurb: opt.blurb });
+    }
+
+    // opponent roster
+    this.dom.opponentList.innerHTML = '';
+    this.opponentButtons = [];
+    const roster = [...ENEMY_PRESETS, {
+      id: 'random', name: 'RANDOM CONTRACT', threat: 0,
+      blurb: 'An unknown frame is assigned when you deploy.'
+    }];
+    for (const foe of roster) {
+      const b = document.createElement('button');
+      b.className = 'opponent';
+      b.dataset.id = foe.id;
+
+      const head = document.createElement('div');
+      head.className = 'opponent-head';
+      const name = document.createElement('span');
+      name.className = 'opponent-name';
+      name.textContent = foe.name;
+      const threat = document.createElement('span');
+      threat.className = 'threat';
+      for (let i = 1; i <= 6; i++) {
+        const pip = document.createElement('i');
+        if (i <= foe.threat) pip.className = 'on';
+        threat.appendChild(pip);
+      }
+      head.append(name, threat);
+
+      const blurb = document.createElement('p');
+      blurb.className = 'opponent-blurb';
+      blurb.textContent = foe.blurb;
+      b.append(head, blurb);
+
+      if (foe.id !== 'random') {
+        const stats = computeStats(foe);
+        const kit = document.createElement('div');
+        kit.className = 'opponent-kit';
+        const rw = getPart(foe.rightWeapon);
+        const lw = getPart(foe.leftWeapon);
+        const guns = [rw, lw].filter((w) => w && w.kind !== 'none').map((w) => w.name).join(' / ');
+        kit.textContent = `AR ${stats.maxHp} · SPD ${stats.walkSpeed.toFixed(1)} · ${guns || 'UNARMED'}`;
+        b.appendChild(kit);
+      }
+
+      b.addEventListener('click', () => {
+        this.opponent = foe.id;
+        audio.uiClick();
+        this._syncDeployment();
+        this.save();
+      });
+      this.dom.opponentList.appendChild(b);
+      this.opponentButtons.push(b);
+    }
+
+    this._syncDeployment();
+  }
+
+  _syncDeployment() {
+    for (const { button, blurb } of this.arenaButtons) {
+      const active = button.dataset.id === this.arena;
+      button.classList.toggle('is-active', active);
+      if (active) this.dom.arenaNote.textContent = blurb;
+    }
+    for (const b of this.opponentButtons) {
+      b.classList.toggle('is-active', b.dataset.id === this.opponent);
+    }
+  }
+
   _buildDifficultyUi() {
     this.dom.difficulty.innerHTML = '';
     this.diffButtons = [];
@@ -247,7 +351,7 @@ export class Garage {
       else if (action === 'reset-build') this.resetBuild();
       else if (action === 'deploy') {
         audio.uiConfirm();
-        this.onDeploy(this.getLoadout(), this.difficulty);
+        this.onDeploy(this.getLoadout(), this.getSettings());
       }
     });
   }
@@ -264,9 +368,11 @@ export class Garage {
     this.mech.root.rotation.y = Math.PI;
     this.scene.add(this.mech.root);
 
+    // Frame the whole build with headroom; heavy frames are much taller.
     const h = this.mech.height;
-    this.orbit.target.set(0, h * 0.5, 0);
-    this.orbit.setDistance(h * 2.35);
+    this.orbit.target.set(0, h * 0.52, 0);
+    this.orbit.maxDistance = Math.max(30, h * 4);
+    this.orbit.setDistance(h * 2.95);
   }
 
   /* ---------------------------------------------------------------- UI */
@@ -328,6 +434,21 @@ export class Garage {
           b.className = better ? 'up' : 'down';
         }
         span.append(`${label} `, b);
+        stats.appendChild(span);
+      }
+
+      // sustained damage per second, so weapon numbers are comparable at a glance
+      if ((slot === 'rightWeapon' || slot === 'leftWeapon') && part.kind !== 'none') {
+        const dps = weaponDps(part);
+        const span = document.createElement('span');
+        const b = document.createElement('b');
+        if (part.kind === 'shield') {
+          b.textContent = `${Math.round((part.block || 0) * 100)}%`;
+          span.append('BLOCK ', b);
+        } else {
+          b.textContent = String(Math.round(dps));
+          span.append('DPS ', b);
+        }
         stats.appendChild(span);
       }
 
