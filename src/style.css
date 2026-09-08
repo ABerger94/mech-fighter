@@ -804,3 +804,64 @@ body.is-touch.in-arena .rotate-notice { display: none; }
   .touch-stick { width: 108px; height: 108px; margin: -54px 0 0 -54px; }
   .touch-stick i { width: 44px; height: 44px; }
 }
+
+
+/* ====================================================================== */
+/*  Progression                                                           */
+/* ====================================================================== */
+
+.ladder { display: flex; flex-direction: column; gap: 8px; }
+.ladder-bar { display: flex; gap: 4px; }
+.ladder-bar i {
+  flex: 1; height: 8px; display: block;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--line-soft);
+}
+.ladder-bar i.on { background: var(--cyan); border-color: var(--cyan); box-shadow: 0 0 8px rgba(77, 225, 255, 0.5); }
+.ladder-line {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em; color: var(--text-dim);
+  white-space: nowrap;
+}
+.ladder-line b { color: #eaf7ff; }
+.ladder-reset {
+  border: 1px solid var(--line-soft); background: rgba(10, 18, 28, 0.7);
+  color: var(--text-dim); font-family: var(--mono); font-size: 9.5px;
+  letter-spacing: 0.1em; padding: 4px 7px; cursor: pointer;
+}
+.ladder-reset:hover { border-color: var(--red); color: #ffc2c8; }
+.ladder-next { font-size: 11px; color: var(--amber); line-height: 1.35; }
+
+/* locked catalogue entries */
+.part-card.is-locked, .opponent.is-locked {
+  opacity: 0.45;
+  cursor: default;
+  filter: grayscale(0.7);
+}
+.part-card.is-locked:hover, .opponent.is-locked:hover { border-color: var(--line-soft); transform: none; }
+.lock-note {
+  margin-top: 6px;
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.08em;
+  color: var(--amber);
+}
+.lock-note::before { content: "\1F512  "; }
+.seg button.is-locked { opacity: 0.4; cursor: default; }
+.seg button.is-locked:hover { border-color: var(--line-soft); color: var(--text-dim); }
+
+/* unlock reveal on the results screen */
+.unlocks { margin: -8px 0 22px; }
+.unlocks:empty { display: none; }
+.unlocks h3 {
+  margin: 0 0 8px; font-size: 12px; letter-spacing: 0.26em; color: var(--amber);
+  border-bottom: 1px solid rgba(255, 179, 71, 0.35); padding-bottom: 5px;
+}
+.unlock-list { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; }
+.unlock-list span {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em;
+  border: 1px solid rgba(255, 179, 71, 0.5);
+  background: rgba(255, 179, 71, 0.12);
+  color: #ffdca8; padding: 3px 7px;
+  animation: unlockIn 0.3s ease both;
+}
+.unlock-list span.is-major { border-color: var(--cyan); background: rgba(77, 225, 255, 0.14); color: #cdefff; }
+@keyframes unlockIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }

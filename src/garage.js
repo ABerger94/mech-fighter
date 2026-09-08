@@ -26,6 +26,17 @@ import {
   resolveLoadout
 } from './data/parts.js';
 import { audio } from './audio.js';
+import {
+  loadProgress,
+  resetProgress,
+  unlockedParts,
+  unlockedOpponents,
+  unlockedArenas,
+  unlockSource,
+  opponentGate,
+  arenaGate,
+  ladderStatus
+} from './progress.js';
 
 const STORAGE_KEY = 'mechfighter.build.v2';
 
@@ -46,7 +57,9 @@ export class Garage {
     this.orbit = new OrbitCamera(this.camera, this.canvas);
     this.orbit.enabled = false;
 
-    this.loadout = this._load();
+    this.progress = loadProgress();
+    this._refreshUnlocks();
+    this.loadout = this._sanitize(this._load());
     this.difficulty = this.loadout.difficulty || 'veteran';
     this.arena = this.loadout.arena || 'orbital';
     this.opponent = this.loadout.opponent || 'nemesis';
@@ -59,6 +72,7 @@ export class Garage {
     this._buildTabs();
     this._buildSlotStrip();
     this._buildPaintUi();
+    this._buildLadder();
     this._buildMobileBar();
     this._buildDeploymentUi();
     this._buildDifficultyUi();
@@ -109,9 +123,101 @@ export class Garage {
     return this.difficulty;
   }
 
-  /** Everything the arena needs to stage a match. */
+  /**
+   * Everything the arena needs to stage a match. "Random" is resolved here so
+   * it can only ever draw from what the pilot has actually earned; the arena
+   * itself stages whatever it is told.
+   */
   getSettings() {
-    return { difficulty: this.difficulty, arena: this.arena, opponent: this.opponent };
+    const pick = (set, fallback) => {
+      const list = [...set];
+      return list.length ? list[Math.floor(Math.random() * list.length)] : fallback;
+    };
+    return {
+      difficulty: this.difficulty,
+      arena: this.arena === 'random' ? pick(this.unlockedArenas, 'orbital') : this.arena,
+      opponent: this.opponent === 'random' ? pick(this.unlockedOpponents, ENEMY_PRESETS[0].id) : this.opponent
+    };
+  }
+
+  /** Recompute what the current record makes available. */
+  _refreshUnlocks() {
+    this.unlockedParts = unlockedParts(this.progress);
+    this.unlockedOpponents = unlockedOpponents(this.progress);
+    this.unlockedArenas = unlockedArenas(this.progress);
+  }
+
+  /** Swap any locked selection back to something the pilot actually owns. */
+  _sanitize(loadout) {
+    const out = { ...loadout, colors: { ...loadout.colors } };
+    for (const slot of SLOT_ORDER) {
+      if (this.unlockedParts.has(out[slot])) continue;
+      const fallback = CATALOG[slot].find((p) => this.unlockedParts.has(p.id));
+      if (fallback) out[slot] = fallback.id;
+    }
+    if (!this.unlockedArenas.has(this.arena) && this.arena !== 'random') this.arena = 'orbital';
+    if (!this.unlockedOpponents.has(this.opponent) && this.opponent !== 'random') {
+      this.opponent = ENEMY_PRESETS[0].id;
+    }
+    return out;
+  }
+
+  /**
+   * Fold a victory into the record and rebuild everything it opened up.
+   * @param {object} progress new state from recordVictory
+   */
+  applyProgress(progress) {
+    this.progress = progress;
+    this._refreshUnlocks();
+    this.loadout = this._sanitize(this.loadout);
+    this._syncLadder();
+    this._syncDeployment();
+    this.rebuild();
+    this.refreshUi();
+    this.save();
+  }
+
+  _buildLadder() {
+    this.dom.ladder.innerHTML = '';
+    const bar = document.createElement('div');
+    bar.className = 'ladder-bar';
+    for (let i = 0; i < ENEMY_PRESETS.length; i++) bar.appendChild(document.createElement('i'));
+
+    const line = document.createElement('div');
+    line.className = 'ladder-line';
+    const label = document.createElement('span');
+    const reset = document.createElement('button');
+    reset.className = 'ladder-reset';
+    reset.textContent = 'RESET';
+    reset.addEventListener('click', () => {
+      if (!window.confirm('Erase your record and re-lock every part?')) return;
+      audio.uiClick();
+      this.applyProgress(resetProgress());
+    });
+    line.append(label, reset);
+
+    const next = document.createElement('p');
+    next.className = 'ladder-next';
+
+    this.dom.ladder.append(bar, line, next);
+    this.ladderDom = { bar, label, next };
+    this._syncLadder();
+  }
+
+  _syncLadder() {
+    if (!this.ladderDom) return;
+    const status = ladderStatus(this.progress);
+    const pips = this.ladderDom.bar.children;
+    for (let i = 0; i < ENEMY_PRESETS.length; i++) {
+      pips[i].className = this.progress.defeated.includes(ENEMY_PRESETS[i].id) ? 'on' : '';
+      pips[i].title = ENEMY_PRESETS[i].name;
+    }
+    this.ladderDom.label.innerHTML = `<b>${status.defeated}/${status.total}</b> FRAMES &middot; <b>${this.unlockedParts.size}/52</b> PARTS`;
+
+    const nextFoe = ENEMY_PRESETS.find((e) => !this.progress.defeated.includes(e.id));
+    this.ladderDom.next.textContent = nextFoe
+      ? `Next: defeat ${nextFoe.name} to unlock ${nextFoe.unlocks.length} more parts.`
+      : 'Every frame downed. The whole catalogue is yours.';
   }
 
   /* --------------------------------------------------------------- DOM */
@@ -127,6 +233,7 @@ export class Garage {
       paintList: $('paint-list'),
       presets: $('paint-presets'),
       difficulty: $('difficulty-seg'),
+      ladder: $('ladder'),
       mobileBar: $('mobile-bar'),
       leftPanel: document.querySelector('.panel--left'),
       rightPanel: document.querySelector('.panel--right'),
@@ -284,8 +391,13 @@ export class Garage {
       b.textContent = opt.label;
       b.dataset.id = opt.id;
       b.addEventListener('click', () => {
-        this.arena = opt.id;
         audio.uiClick();
+        if (opt.id !== 'random' && !this.unlockedArenas.has(opt.id)) {
+          const gate = arenaGate(opt.id);
+          this.dom.arenaNote.textContent = gate ? `Locked. Defeat ${gate.name} to open this battlefield.` : 'Locked.';
+          return;
+        }
+        this.arena = opt.id;
         this._syncDeployment();
         this.save();
       });
@@ -310,6 +422,7 @@ export class Garage {
       const name = document.createElement('span');
       name.className = 'opponent-name';
       name.textContent = foe.name;
+      name.dataset.name = foe.name;
       const threat = document.createElement('span');
       threat.className = 'threat';
       for (let i = 1; i <= 6; i++) {
@@ -336,8 +449,13 @@ export class Garage {
       }
 
       b.addEventListener('click', () => {
-        this.opponent = foe.id;
         audio.uiClick();
+        if (foe.id !== 'random' && !this.unlockedOpponents.has(foe.id)) {
+          const gate = opponentGate(foe.id);
+          if (gate) blurb.textContent = `Locked. Defeat ${gate.name} first.`;
+          return;
+        }
+        this.opponent = foe.id;
         this._syncDeployment();
         this.save();
       });
@@ -350,12 +468,21 @@ export class Garage {
 
   _syncDeployment() {
     for (const { button, blurb } of this.arenaButtons) {
-      const active = button.dataset.id === this.arena;
-      button.classList.toggle('is-active', active);
-      if (active) this.dom.arenaNote.textContent = blurb;
+      const id = button.dataset.id;
+      const locked = id !== 'random' && !this.unlockedArenas.has(id);
+      button.classList.toggle('is-locked', locked);
+      const active = id === this.arena;
+      button.classList.toggle('is-active', active && !locked);
+      if (active && !locked) this.dom.arenaNote.textContent = blurb;
     }
     for (const b of this.opponentButtons) {
-      b.classList.toggle('is-active', b.dataset.id === this.opponent);
+      const id = b.dataset.id;
+      const locked = id !== 'random' && !this.unlockedOpponents.has(id);
+      b.classList.toggle('is-locked', locked);
+      b.classList.toggle('is-active', id === this.opponent && !locked);
+      const beaten = this.progress.defeated.includes(id);
+      const mark = b.querySelector('.opponent-name');
+      if (mark) mark.textContent = beaten ? `${mark.dataset.name} \u2713` : mark.dataset.name;
     }
   }
 
@@ -435,6 +562,7 @@ export class Garage {
 
     this._renderPartList();
     this._renderStats();
+    this._syncLadder();
   }
 
   _renderPartList() {
@@ -446,8 +574,10 @@ export class Garage {
 
     this.dom.partList.innerHTML = '';
     for (const part of list) {
+      const locked = !this.unlockedParts.has(part.id);
       const card = document.createElement('div');
-      card.className = 'part-card' + (part.id === currentId ? ' is-selected' : '');
+      card.className =
+        'part-card' + (part.id === currentId ? ' is-selected' : '') + (locked ? ' is-locked' : '');
 
       const head = document.createElement('div');
       head.className = 'part-card-head';
@@ -495,7 +625,20 @@ export class Garage {
       }
 
       card.append(head, desc, stats);
-      card.addEventListener('click', () => this.selectPart(slot, part.id));
+
+      if (locked) {
+        const gate = unlockSource(part.id);
+        const note = document.createElement('div');
+        note.className = 'lock-note';
+        note.textContent = gate ? `DEFEAT ${gate.name}` : 'LOCKED';
+        card.appendChild(note);
+        card.addEventListener('click', () => {
+          audio.uiClick();
+          if (gate) this.dom.arenaNote.textContent = `${part.name} is locked. Defeat ${gate.name} to earn it.`;
+        });
+      } else {
+        card.addEventListener('click', () => this.selectPart(slot, part.id));
+      }
       this.dom.partList.appendChild(card);
     }
   }
@@ -549,6 +692,7 @@ export class Garage {
 
   selectPart(slot, id) {
     if (this.loadout[slot] === id) return;
+    if (!this.unlockedParts.has(id)) return;
     this.loadout[slot] = id;
     audio.uiClick();
     this.rebuild();
@@ -558,8 +702,8 @@ export class Garage {
 
   randomize() {
     for (const slot of SLOT_ORDER) {
-      const list = CATALOG[slot];
-      this.loadout[slot] = list[Math.floor(Math.random() * list.length)].id;
+      const list = CATALOG[slot].filter((p) => this.unlockedParts.has(p.id));
+      if (list.length) this.loadout[slot] = list[Math.floor(Math.random() * list.length)].id;
     }
     // an empty right hand makes for a dull match
     if (this.loadout.rightWeapon === 'wp_none') this.loadout.rightWeapon = 'wp_beam_rifle';
@@ -573,7 +717,7 @@ export class Garage {
   }
 
   resetBuild() {
-    this.loadout = { ...DEFAULT_LOADOUT, colors: { ...DEFAULT_LOADOUT.colors } };
+    this.loadout = this._sanitize({ ...DEFAULT_LOADOUT, colors: { ...DEFAULT_LOADOUT.colors } });
     this.dom.nameInput.value = this.loadout.name;
     this._syncPaintInputs();
     audio.uiClick();
