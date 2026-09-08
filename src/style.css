@@ -39,6 +39,11 @@ body {
   -webkit-user-select: none;
   overscroll-behavior: none;
   -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  /* `manipulation` kills double-tap-to-zoom document-wide while leaving
+     panning intact, so scroll containers below still work. Pinch is blocked
+     in JS because iOS ignores user-scalable=no. */
+  touch-action: manipulation;
 }
 
 /* Visibility helpers driven by the touch/desktop body class set in main.js. */
@@ -57,7 +62,7 @@ body.is-touch .desktop-only { display: none !important; }
   touch-action: none;
 }
 
-#app { touch-action: none; }
+#app { touch-action: manipulation; }
 
 /* ---------------------------------------------------------- screens */
 .screen {
@@ -194,7 +199,12 @@ body.is-touch .desktop-only { display: none !important; }
 }
 .panel--left { border-left: none; }
 .panel--right { border-right: none; }
-.panel-scroll { overflow-y: auto; overflow-x: hidden; padding: 12px 14px 28px; min-height: 0; flex: 1; }
+.panel-scroll {
+  overflow-y: auto; overflow-x: hidden;
+  padding: 12px 14px 28px; min-height: 0; flex: 1;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
 .panel-scroll::-webkit-scrollbar { width: 8px; }
 .panel-scroll::-webkit-scrollbar-thumb { background: rgba(77, 225, 255, 0.25); }
 .panel-scroll::-webkit-scrollbar-track { background: transparent; }
@@ -374,7 +384,7 @@ body.is-touch .desktop-only { display: none !important; }
 .opponent-kit { margin-top: 5px; font-family: var(--mono); font-size: 10px; color: var(--cyan-dim); letter-spacing: 0.04em; }
 
 /* ---------------------------------------------------------- HUD */
-.screen--hud { pointer-events: none; }
+.screen--hud { pointer-events: none; touch-action: none; }
 .screen--hud.is-active > * { pointer-events: none; }
 .screen--hud .btn, .screen--hud .pause-overlay.is-open { pointer-events: auto; }
 
@@ -542,6 +552,7 @@ body.is-touch .desktop-only { display: none !important; }
   inset: 0;
   display: none;
   pointer-events: none;
+  touch-action: none;
   z-index: 6;
 }
 .touch-layer.is-active { display: block; }
@@ -613,6 +624,9 @@ body.is-touch .desktop-only { display: none !important; }
   backdrop-filter: blur(3px);
   transition: transform 0.08s ease, background 0.08s ease;
   touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 .tbtn.is-down { transform: scale(0.92); background: rgba(77, 225, 255, 0.4); color: #04121a; }
 .tbtn--sm { width: var(--tb-mini); height: var(--tb-mini); font-size: calc(10px * var(--tb)); opacity: 0.8; }
@@ -718,6 +732,7 @@ body.is-touch.in-arena .rotate-notice { display: none; }
     overflow-x: auto;
     justify-content: flex-start;
     padding: 8px 10px;
+    touch-action: pan-x;
     -webkit-overflow-scrolling: touch;
   }
   .slot-strip::-webkit-scrollbar { height: 0; }

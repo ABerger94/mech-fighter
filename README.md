@@ -63,6 +63,10 @@ from the device and switches live if you start tapping a touchscreen.
 | `R` / `F` | Reload / backpack ordnance or funnels |
 | `II` | Pause |
 
+Rapid tapping will not zoom the page: iOS has ignored `user-scalable=no` since
+iOS 10, so double-tap and pinch gestures are cancelled directly on the surfaces
+the game drives, while the garage panels keep normal touch scrolling.
+
 On a phone the garage becomes a single column: the parts list and the status
 panel slide up as bottom sheets from the bar along the bottom, and the frame
 preview keeps the whole screen behind them. Deploying asks for fullscreen and a
