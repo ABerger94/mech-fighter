@@ -27,6 +27,8 @@ const DASH_COST = 24;
 const DASH_COOLDOWN = 0.42;
 const ENERGY_DELAY = 0.35;
 const DEG = Math.PI / 180;
+/** Just short of straight up/down, so the camera's up vector never degenerates. */
+const MAX_PITCH = 84 * DEG;
 
 /* ====================================================================== */
 /*  Geometry helpers                                                      */
@@ -1272,7 +1274,7 @@ export class Arena {
     if (input.canLook()) {
       this.chase.yaw -= input.dx * input.sensitivity;
       const dy = input.dy * input.sensitivity * (input.invertY ? -1 : 1);
-      this.chase.pitch = THREE.MathUtils.clamp(this.chase.pitch - dy, -0.85, 0.72);
+      this.chase.pitch = THREE.MathUtils.clamp(this.chase.pitch - dy, -MAX_PITCH, MAX_PITCH);
     }
 
     // ---- aim target: ray from the camera through the crosshair
@@ -1522,7 +1524,7 @@ export class Arena {
     while (dy < -Math.PI) dy += Math.PI * 2;
     const turn = e.stats.turnRate * dt * (1.2 + skill);
     e.yaw += THREE.MathUtils.clamp(dy, -turn, turn);
-    e.pitch = THREE.MathUtils.lerp(e.pitch, THREE.MathUtils.clamp(distY / Math.max(6, flatDist), -0.7, 0.7), dt * 5);
+    e.pitch = THREE.MathUtils.lerp(e.pitch, THREE.MathUtils.clamp(Math.atan2(distY, Math.max(2, flatDist)), -MAX_PITCH, MAX_PITCH), dt * 5);
 
     // -------- pick a stance, weighted by this opponent's profile
     const prof = ai.profile;

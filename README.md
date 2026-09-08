@@ -42,7 +42,7 @@ from the device and switches live if you start tapping a touchscreen.
 | Input | Action |
 | --- | --- |
 | `W` `A` `S` `D` | Walk and strafe |
-| Mouse | Aim; the frame turns to follow the camera |
+| Mouse | Aim through a near-vertical arc; the frame turns to follow the camera |
 | `Space` | Jump, hold to hover on thrusters |
 | `Shift` | Quick-boost dash |
 | Left mouse | Fire the right-hand weapon |
@@ -85,6 +85,10 @@ real constraint on a build.
 
 Matches last three minutes. If neither frame is destroyed, the pilot with the
 higher remaining armour percentage wins.
+
+Look freely from 84 degrees down to 84 degrees up. Boost above an enemy and
+you can aim straight down at it: the shoulder tracks the full arc, so the
+weapon points where you are looking rather than stopping short.
 
 ### Firing models
 
