@@ -19,6 +19,7 @@ export class InputManager {
     this.enabled = false;
     this.touchMode = false;
     this.touchAxes = { x: 0, z: 0, active: false };
+    this._pendingReleases = [];
     this.sensitivity = 0.0022;
     this.invertY = false;
     this.onLockChange = null;
@@ -33,7 +34,8 @@ export class InputManager {
       }
     };
     this._onKeyUp = (e) => {
-      this.keys.delete(e.code);
+      const code = e.code;
+      this.deferRelease(() => this.keys.delete(code));
     };
     this._onBlur = () => {
       this.keys.clear();
@@ -46,9 +48,11 @@ export class InputManager {
       if (e.button === 1) { this.mouse.middle = true; this.mousePressed.middle = true; }
     };
     this._onMouseUp = (e) => {
-      if (e.button === 0) this.mouse.left = false;
-      if (e.button === 2) this.mouse.right = false;
-      if (e.button === 1) this.mouse.middle = false;
+      // Deferred so a click that starts and ends inside one frame is still
+      // seen as held by the simulation.
+      if (e.button === 0) this.deferRelease(() => { this.mouse.left = false; });
+      if (e.button === 2) this.deferRelease(() => { this.mouse.right = false; });
+      if (e.button === 1) this.deferRelease(() => { this.mouse.middle = false; });
     };
     this._onMouseMove = (e) => {
       if (!this.locked) return;
@@ -113,12 +117,27 @@ export class InputManager {
     return this.pressed.has(code);
   }
 
+  /**
+   * Hold a button release until the current frame has been read.
+   *
+   * A fast tap can press and release between two simulation ticks, which would
+   * otherwise be invisible: the trigger would read as never held and the shot
+   * would never go out.
+   */
+  deferRelease(fn) {
+    this._pendingReleases.push(fn);
+  }
+
   /** Consume per-frame edge state. Call at the end of each simulation tick. */
   endFrame() {
     this.pressed.clear();
     this.mousePressed.left = this.mousePressed.right = this.mousePressed.middle = false;
     this.dx = 0;
     this.dy = 0;
+    if (this._pendingReleases.length) {
+      for (const fn of this._pendingReleases) fn();
+      this._pendingReleases.length = 0;
+    }
   }
 
   /** Movement axes in local space: x = strafe (+right), z = forward (+forward). */
@@ -219,6 +238,50 @@ export class TouchControls {
     window.addEventListener('pointermove', this._onMove, { passive: false });
     window.addEventListener('pointerup', this._onUp);
     window.addEventListener('pointercancel', this._onUp);
+
+    this._bindGestureSuppression();
+  }
+
+  /**
+   * Stop the browser turning rapid taps and two-finger drags into page zoom.
+   *
+   * iOS has ignored `user-scalable=no` since iOS 10, and `touch-action` alone
+   * does not reliably suppress WebKit's double-tap zoom once taps come fast,
+   * so the touch defaults are cancelled directly on the surfaces the game
+   * drives with pointer events. Those never rely on a synthesized click, so
+   * cancelling costs nothing; the rest of the UI is left alone.
+   */
+  _bindGestureSuppression() {
+    const cancel = (e) => {
+      if (e.cancelable) e.preventDefault();
+    };
+    this._cancelTouch = cancel;
+
+    for (const el of [this.canvas, ...this.buttons.keys()]) {
+      el.addEventListener('touchstart', cancel, { passive: false });
+      el.addEventListener('touchend', cancel, { passive: false });
+    }
+
+    // Safari-only pinch gesture events, which bypass touch-action entirely.
+    this._onGesture = (e) => {
+      if (e.cancelable) e.preventDefault();
+    };
+    for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+      document.addEventListener(type, this._onGesture, { passive: false });
+    }
+
+    // Pinch on engines that report it as a multi-touch move.
+    this._onMultiTouch = (e) => {
+      if (e.touches && e.touches.length > 1 && e.cancelable) e.preventDefault();
+    };
+    document.addEventListener('touchmove', this._onMultiTouch, { passive: false });
+
+    // Double-tap zoom fallback, minus real text fields where it selects words.
+    this._onDoubleTap = (e) => {
+      if (e.target && e.target.closest && e.target.closest('input, textarea')) return;
+      if (e.cancelable) e.preventDefault();
+    };
+    document.addEventListener('dblclick', this._onDoubleTap, { passive: false });
   }
 
   setEnabled(on) {
@@ -287,7 +350,9 @@ export class TouchControls {
   _buttonUp(e, el, action) {
     if (!el.classList.contains('is-down')) return;
     el.classList.remove('is-down');
-    this._releaseAction(action);
+    // A tap can begin and end within a single frame; hold the release so the
+    // simulation still sees one frame of the button being down.
+    this.input.deferRelease(() => this._releaseAction(action));
   }
 
   _surfaceDown(e) {
@@ -360,5 +425,15 @@ export class TouchControls {
     window.removeEventListener('pointermove', this._onMove);
     window.removeEventListener('pointerup', this._onUp);
     window.removeEventListener('pointercancel', this._onUp);
+
+    for (const el of [this.canvas, ...this.buttons.keys()]) {
+      el.removeEventListener('touchstart', this._cancelTouch);
+      el.removeEventListener('touchend', this._cancelTouch);
+    }
+    for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+      document.removeEventListener(type, this._onGesture);
+    }
+    document.removeEventListener('touchmove', this._onMultiTouch);
+    document.removeEventListener('dblclick', this._onDoubleTap);
   }
 }

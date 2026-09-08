@@ -63,6 +63,10 @@ from the device and switches live if you start tapping a touchscreen.
 | `R` / `F` | Reload / backpack ordnance or funnels |
 | `II` | Pause |
 
+Rapid tapping will not zoom the page: iOS has ignored `user-scalable=no` since
+iOS 10, so double-tap and pinch gestures are cancelled directly on the surfaces
+the game drives, while the garage panels keep normal touch scrolling.
+
 On a phone the garage becomes a single column: the parts list and the status
 panel slide up as bottom sheets from the bar along the bottom, and the frame
 preview keeps the whole screen behind them. Deploying asks for fullscreen and a
@@ -101,9 +105,29 @@ holding:
   out to orbit you and fire on their own; they drain energy while deployed and
   dock themselves when you run dry.
 
+## The ladder
+
+You start with 12 parts and one opponent. Every frame you put down releases a
+slice of the catalogue, the next opponent, and eventually two more
+battlefields, so the roster doubles as the unlock ladder:
+
+| Defeat | Releases |
+| --- | --- |
+| Trainer Mk-I | 5 parts, and Nemesis RX-7 |
+| Nemesis RX-7 | 6 parts, Canyon Ruins, and Bastion HW-3 |
+| Bastion HW-3 | 7 parts, and Wraith Spectre |
+| Wraith Spectre | 6 parts, Neon City, and Siege Arbiter |
+| Siege Arbiter | 8 parts, and Overlord ZX |
+| Overlord ZX | the last 8 parts |
+
+All 52 parts have exactly one unlock path. Locked entries stay visible in the
+garage with the opponent that drops them, your record persists in
+`localStorage`, and the pilot record panel can reset it. Picking a random
+contract only ever draws from what you have earned.
+
 ## Building a mech
 
-Seven slots and 46 parts, each changing the derived stats:
+Seven slots and 52 parts, each changing the derived stats:
 
 - **Head** (6) — sensor range, lock-on speed, reload assistance
 - **Torso** (6) — the bulk of your armour, energy capacity, damage resistance,
@@ -140,9 +164,19 @@ Three arenas, each with its own props, palette, lighting and ambient life:
 - **Neon City** — a tower grid of tight lanes lit magenta and cyan.
 
 Six opponents, from the Trainer Mk-I up to the Overlord ZX, each a full frame
-built from the same catalogue you use — including a tracked gatling platform, a
-drifting stealth duellist, quadruped artillery and an ace with funnels. Pick one
-from the roster, or take a random contract.
+built from the same catalogue you use. They do not just carry different guns —
+each has a behaviour profile controlling its preferred engagement band,
+aggression, dodging, strafing, airtime, trigger discipline and whether it holds
+ground, so they fight differently as well as shooting differently:
+
+| Opponent | How it fights | Measured average range |
+| --- | --- | --- |
+| Trainer Mk-I | Predictable mid-range sparring | 38 m |
+| Nemesis RX-7 | Interceptor; closes hard for the saber | 16 m |
+| Bastion HW-3 | Plants on its treads and suppresses; never leaves the ground | 55 m |
+| Wraith Spectre | Drifts in to knife range and cuts | 29 m |
+| Siege Arbiter | Refuses to be crowded; lobs from distance | 80 m |
+| Overlord ZX | Adaptive ace, mixes every stance | 41 m |
 
 ## Project layout
 

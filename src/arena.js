@@ -366,6 +366,8 @@ export class Arena {
     this.player = new Fighter(playerLoadout, true, playerLoadout.name || 'PLAYER FRAME');
     this.enemy = new Fighter(preset, false, preset.name);
     this.enemy.skill = preset.skill;
+    this.enemy.profile = preset.ai || null;
+    this.enemy.presetId = preset.id;
 
     this.scene.add(this.player.root, this.enemy.root);
 
@@ -1450,11 +1452,30 @@ export class Arena {
     const rw = e.weapons.right.part;
     const lw = e.weapons.left.part;
     const ranged = rw.kind !== 'melee' && rw.kind !== 'none' ? rw : lw;
+
+    // Each opponent carries its own behaviour profile; anything missing falls
+    // back to a balanced mid-range fighter derived from its weapons.
+    const fallbackRange = ranged.range > 0 ? THREE.MathUtils.clamp(ranged.range * 0.42, 16, 78) : 12;
+    const profile = {
+      band: [fallbackRange * 0.7, fallbackRange * 1.3],
+      aggression: 0.5,
+      dodge: 0.5,
+      strafe: 0.7,
+      jumpiness: 0.5,
+      discipline: 0.6,
+      flank: 0.4,
+      holdGround: false,
+      ...(e.profile || {})
+    };
+    // A frame that cannot leave the ground never tries to.
+    if (!e.stats.canJump && !e.stats.canThrust) profile.jumpiness = 0;
+
     e.ai = {
+      profile,
       state: 'engage',
       stateTimer: 0,
       strafeDir: Math.random() > 0.5 ? 1 : -1,
-      preferredRange: ranged.range > 0 ? THREE.MathUtils.clamp(ranged.range * 0.42, 16, 78) : 12,
+      preferredRange: (profile.band[0] + profile.band[1]) * 0.5,
       meleeSlot: rw.kind === 'melee' ? 'right' : lw.kind === 'melee' ? 'left' : null,
       reactionTimer: 0,
       aimError: new THREE.Vector3(),
@@ -1503,19 +1524,25 @@ export class Arena {
     e.yaw += THREE.MathUtils.clamp(dy, -turn, turn);
     e.pitch = THREE.MathUtils.lerp(e.pitch, THREE.MathUtils.clamp(distY / Math.max(6, flatDist), -0.7, 0.7), dt * 5);
 
-    // -------- pick a stance
+    // -------- pick a stance, weighted by this opponent's profile
+    const prof = ai.profile;
     ai.stateTimer -= dt;
     if (ai.stateTimer <= 0) {
-      ai.stateTimer = 0.9 + Math.random() * 1.4;
-      if (Math.random() < 0.45) ai.strafeDir *= -1;
+      // Aggressive frames re-decide quickly; ground-holders commit for longer.
+      ai.stateTimer = (prof.holdGround ? 1.6 : 0.8) + Math.random() * (0.6 + prof.aggression * 1.4);
+      if (Math.random() < 0.2 + prof.strafe * 0.4) ai.strafeDir *= -1;
 
       const lowEnergy = e.energy < e.maxEnergy * 0.25;
       const reloading = e.weapons.right.reloading && (!e.weapons.left || e.weapons.left.reloading);
-      if (ai.meleeSlot && dist < 34 && e.hp > e.maxHp * 0.3 && Math.random() < 0.35 + skill * 0.3) {
+      const chargeReach = prof.band[1] * 0.9;
+      if (ai.meleeSlot && dist < chargeReach && e.hp > e.maxHp * 0.3 && Math.random() < prof.aggression * (0.5 + skill * 0.5)) {
         ai.state = 'charge';
       } else if (!los) {
-        ai.state = 'flank';
+        ai.state = Math.random() < prof.flank ? 'flank' : 'engage';
       } else if (lowEnergy || reloading) {
+        ai.state = 'withdraw';
+      } else if (dist < prof.band[0] * 0.75 && prof.holdGround) {
+        // artillery and gun platforms back off when crowded
         ai.state = 'withdraw';
       } else {
         ai.state = 'engage';
@@ -1529,15 +1556,22 @@ export class Arena {
     const wish = _v4.set(0, 0, 0);
 
     if (ai.state === 'charge') {
-      wish.copy(fwdToPlayer).addScaledVector(strafe, 0.35);
+      wish.copy(fwdToPlayer).addScaledVector(strafe, 0.35 * prof.strafe);
     } else if (ai.state === 'withdraw') {
-      wish.copy(fwdToPlayer).multiplyScalar(-1).addScaledVector(strafe, 0.7);
+      wish.copy(fwdToPlayer).multiplyScalar(-1).addScaledVector(strafe, 0.7 * prof.strafe);
     } else if (ai.state === 'flank') {
       wish.copy(strafe).addScaledVector(fwdToPlayer, 0.55);
+    } else if (flatDist < prof.band[0]) {
+      // inside the band: back out, harder for frames that want distance
+      const urgency = prof.holdGround ? 1 : 0.55 * (1 - prof.aggression);
+      wish.copy(fwdToPlayer).multiplyScalar(-urgency).addScaledVector(strafe, prof.strafe);
+    } else if (flatDist > prof.band[1]) {
+      // outside the band: close, harder for aggressive frames
+      const urgency = 0.5 + prof.aggression * 0.5;
+      wish.copy(fwdToPlayer).multiplyScalar(urgency).addScaledVector(strafe, prof.strafe * 0.6);
     } else {
-      const err = flatDist - ai.preferredRange;
-      const approach = THREE.MathUtils.clamp(err / 22, -1, 1);
-      wish.copy(fwdToPlayer).multiplyScalar(approach).addScaledVector(strafe, 0.85);
+      // in the band: hold and circle rather than drift in and out
+      wish.copy(strafe).multiplyScalar(prof.holdGround ? prof.strafe * 0.45 : prof.strafe);
     }
 
     // keep away from the arena edge
@@ -1561,9 +1595,9 @@ export class Arena {
           this._aiTmp.divideScalar(Math.max(0.0001, d));
           this._aiTmp2.copy(proj.vel).normalize();
           const closing = this._aiTmp2.dot(this._aiTmp);
-          if (closing > 0.94 && Math.random() < 0.35 + skill * 0.5) {
+          if (closing > 0.94 && Math.random() < prof.dodge * (0.5 + skill * 0.6)) {
             dash = true;
-            ai.dodgeTimer = 0.8 - skill * 0.35;
+            ai.dodgeTimer = 1.1 - prof.dodge * 0.5 - skill * 0.2;
             ai.strafeDir *= -1;
             break;
           }
@@ -1573,8 +1607,10 @@ export class Arena {
 
     ai.jumpTimer -= dt;
     if (ai.jumpTimer <= 0) {
-      ai.jumpTimer = 2.4 + Math.random() * 3.5;
-      if (e.grounded && e.stats.canJump && e.energy > e.maxEnergy * 0.45 && Math.random() < 0.35 + skill * 0.35) jump = true;
+      ai.jumpTimer = 1.4 + (1 - prof.jumpiness) * 4 + Math.random() * 2.5;
+      if (e.grounded && e.stats.canJump && e.energy > e.maxEnergy * 0.45 && Math.random() < prof.jumpiness * (0.5 + skill * 0.6)) {
+        jump = true;
+      }
     }
     const hover = e.stats.canThrust && !e.grounded && e.vel.y < 0 && e.energy > e.maxEnergy * 0.3 && distY > 3;
 
@@ -1595,15 +1631,17 @@ export class Arena {
       // trigger discipline: the AI does not hold the trigger down forever
       ai.burst -= dt;
       if (ai.burst <= 0) {
-        ai.burst = 0.35 + Math.random() * (1.5 - skill);
-        ai.burstOpen = Math.random() < 0.3 + skill * 0.4;
-        ai.leftOpen = Math.random() < 0.45 + skill * 0.4;
+        // Disciplined frames hold longer bursts and waste fewer of them.
+        ai.burst = 0.3 + prof.discipline * 0.6 + Math.random() * (1.4 - skill * 0.6);
+        ai.burstOpen = Math.random() < 0.2 + prof.discipline * 0.5 + skill * 0.3;
+        ai.leftOpen = Math.random() < 0.35 + prof.discipline * 0.4 + skill * 0.3;
       }
 
-      const wantRight = facing > 0.86 && ai.burstOpen && dist < rw.range * 1.05 && rw.kind !== 'melee';
+      const facingGate = 0.82 + prof.discipline * 0.1;
+      const wantRight = facing > facingGate && ai.burstOpen && dist < rw.range * 1.05 && rw.kind !== 'melee';
       const lw = e.weapons.left.part;
       const wantLeft =
-        facing > 0.86 && ai.burstOpen && lw.kind !== 'none' && lw.kind !== 'shield' && lw.kind !== 'melee' && dist < lw.range * 1.05;
+        facing > facingGate && ai.burstOpen && lw.kind !== 'none' && lw.kind !== 'shield' && lw.kind !== 'melee' && dist < lw.range * 1.05;
 
       // charge weapons need the trigger held, so the AI commits for a beat
       this._handleTrigger(e, 'right', wantRight, aimAt, dt, aiLead);
@@ -1890,7 +1928,8 @@ export class Arena {
           accuracy: this.player.shotsFired > 0 ? this.player.shotsHit / this.player.shotsFired : 0,
           hpLeft: Math.max(0, Math.round(this.player.hp)),
           hpMax: this.player.maxHp,
-          enemy: this.enemy.name
+          enemy: this.enemy.name,
+          opponentId: this.enemy.presetId
         });
       }
     }

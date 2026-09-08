@@ -13,6 +13,7 @@ import { Hud } from './hud.js';
 import { Garage } from './garage.js';
 import { Arena } from './arena.js';
 import { audio } from './audio.js';
+import { recordVictory } from './progress.js';
 
 const MOVE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD'];
 
@@ -212,6 +213,35 @@ class Game {
       b.textContent = value;
       div.append(s, b);
       stats.appendChild(div);
+    }
+
+    // A win advances the ladder and releases the next slice of the catalogue.
+    const unlocks = document.getElementById('result-unlocks');
+    unlocks.innerHTML = '';
+    if (result.win && result.opponentId) {
+      const earned = recordVictory(this.garage.progress, result.opponentId);
+      if (!earned.repeat) {
+        this.garage.applyProgress(earned.progress);
+        const rows = [
+          ...earned.parts.map((p) => ({ label: p.name, major: false })),
+          ...earned.arenas.map((a) => ({ label: `${a.toUpperCase()} BATTLEFIELD`, major: true })),
+          ...(earned.opponent ? [{ label: `${earned.opponent.name} UNLOCKED`, major: true }] : [])
+        ];
+        if (rows.length) {
+          const title = document.createElement('h3');
+          title.textContent = 'SALVAGE RECOVERED';
+          const list = document.createElement('div');
+          list.className = 'unlock-list';
+          rows.forEach((row, i) => {
+            const el = document.createElement('span');
+            el.textContent = row.label;
+            if (row.major) el.className = 'is-major';
+            el.style.animationDelay = `${i * 45}ms`;
+            list.appendChild(el);
+          });
+          unlocks.append(title, list);
+        }
+      }
     }
 
     if (result.win) audio.victory();

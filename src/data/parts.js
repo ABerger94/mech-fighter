@@ -718,6 +718,34 @@ export const DEFAULT_LOADOUT = {
 
 /* ------------------------------------------------------------- OPPONENTS */
 
+/**
+ * Parts available before a single victory. Every slot has at least one entry,
+ * so the starting sandbox can build a complete, legal frame.
+ */
+export const STARTER_PARTS = [
+  'head_standard',
+  'torso_sentinel', 'torso_wraith',
+  'arms_vanguard',
+  'legs_strider', 'legs_skimmer',
+  'back_seraph',
+  'wp_beam_rifle', 'wp_autocannon', 'wp_plasma_blade', 'wp_tower_shield', 'wp_none'
+];
+
+/** Battlefields earned by beating the opponent named here. */
+export const ARENA_UNLOCKS = { orbital: null, canyon: 'nemesis', city: 'wraith' };
+
+/**
+ * Opponents are not just different loadouts: each carries a behaviour profile
+ * that decides how it uses the arena.
+ *   band        preferred engagement distance, in metres
+ *   aggression  how hard it presses toward the low end of the band
+ *   dodge       willingness to quick-boost away from incoming fire
+ *   strafe      how much it circles rather than facing head on
+ *   jumpiness   how often it leaves the ground
+ *   discipline  trigger control; high values hold fire until well aimed
+ *   flank       tendency to break away and re-approach from elsewhere
+ *   holdGround  plants and shoots rather than closing
+ */
 export const ENEMY_PRESETS = [
   {
     id: 'trainer',
@@ -728,7 +756,9 @@ export const ENEMY_PRESETS = [
     head: 'head_standard', torso: 'torso_sentinel', arms: 'arms_vanguard',
     legs: 'legs_strider', backpack: 'back_aegis',
     rightWeapon: 'wp_autocannon', leftWeapon: 'wp_none',
-    colors: { primary: '#6b7480', secondary: '#39414c', accent: '#ff8a3d', frame: '#1c2129', glow: '#ff7043' }
+    colors: { primary: '#6b7480', secondary: '#39414c', accent: '#ff8a3d', frame: '#1c2129', glow: '#ff7043' },
+    unlocks: ['head_scout', 'arms_stiletto', 'back_aegis', 'wp_pulse_smg', 'wp_shotgun'],
+    ai: { band: [24, 42], aggression: 0.40, dodge: 0.20, strafe: 0.55, jumpiness: 0.25, discipline: 0.50, flank: 0.30, holdGround: false }
   },
   {
     id: 'nemesis',
@@ -739,7 +769,9 @@ export const ENEMY_PRESETS = [
     head: 'head_scout', torso: 'torso_wraith', arms: 'arms_stiletto',
     legs: 'legs_skimmer', backpack: 'back_seraph',
     rightWeapon: 'wp_beam_rifle', leftWeapon: 'wp_plasma_blade',
-    colors: { primary: '#8e1f3d', secondary: '#3d0f1d', accent: '#ffd166', frame: '#1a0a11', glow: '#ff3d6e' }
+    colors: { primary: '#8e1f3d', secondary: '#3d0f1d', accent: '#ffd166', frame: '#1a0a11', glow: '#ff3d6e' },
+    unlocks: ['head_gunner', 'torso_striker', 'arms_gunslinger', 'legs_raptor', 'wp_missile_pod', 'wp_gatling'],
+    ai: { band: [16, 44], aggression: 0.80, dodge: 0.70, strafe: 0.90, jumpiness: 0.80, discipline: 0.70, flank: 0.60, holdGround: false }
   },
   {
     id: 'bastion',
@@ -750,7 +782,9 @@ export const ENEMY_PRESETS = [
     head: 'head_gunner', torso: 'torso_bulwark', arms: 'arms_gunslinger',
     legs: 'legs_tread', backpack: 'back_medic',
     rightWeapon: 'wp_gatling', leftWeapon: 'wp_tower_shield',
-    colors: { primary: '#4a5b47', secondary: '#2a352a', accent: '#c9d94f', frame: '#161c15', glow: '#b6ff7a' }
+    colors: { primary: '#4a5b47', secondary: '#2a352a', accent: '#c9d94f', frame: '#161c15', glow: '#b6ff7a' },
+    unlocks: ['head_command', 'torso_bulwark', 'arms_aegis', 'legs_tread', 'back_medic', 'wp_railgun', 'wp_bazooka'],
+    ai: { band: [30, 62], aggression: 0.25, dodge: 0.20, strafe: 0.30, jumpiness: 0.00, discipline: 0.95, flank: 0.15, holdGround: true }
   },
   {
     id: 'wraith',
@@ -761,7 +795,9 @@ export const ENEMY_PRESETS = [
     head: 'head_duel', torso: 'torso_phantom', arms: 'arms_duelist',
     legs: 'legs_hover', backpack: 'back_seraph',
     rightWeapon: 'wp_sprayer', leftWeapon: 'wp_twin_saber',
-    colors: { primary: '#2c2f4a', secondary: '#15172a', accent: '#8f7dff', frame: '#0d0e1a', glow: '#b39cff' }
+    colors: { primary: '#2c2f4a', secondary: '#15172a', accent: '#8f7dff', frame: '#0d0e1a', glow: '#b39cff' },
+    unlocks: ['head_duel', 'torso_phantom', 'legs_hover', 'wp_twin_saber', 'wp_sprayer', 'wp_laser'],
+    ai: { band: [9, 28], aggression: 0.95, dodge: 0.90, strafe: 1.00, jumpiness: 0.50, discipline: 0.60, flank: 0.80, holdGround: false }
   },
   {
     id: 'artillery',
@@ -772,7 +808,9 @@ export const ENEMY_PRESETS = [
     head: 'head_hawkeye', torso: 'torso_ogre', arms: 'arms_aegis',
     legs: 'legs_quad', backpack: 'back_hornet',
     rightWeapon: 'wp_bazooka', leftWeapon: 'wp_mortar',
-    colors: { primary: '#5c4a2e', secondary: '#33291a', accent: '#ffb347', frame: '#191309', glow: '#ffcf7a' }
+    colors: { primary: '#5c4a2e', secondary: '#33291a', accent: '#ffb347', frame: '#191309', glow: '#ffcf7a' },
+    unlocks: ['head_hawkeye', 'torso_ogre', 'arms_titan', 'legs_quad', 'back_hornet', 'wp_mortar', 'wp_seeker', 'wp_axe'],
+    ai: { band: [52, 92], aggression: 0.10, dodge: 0.35, strafe: 0.40, jumpiness: 0.10, discipline: 0.80, flank: 0.20, holdGround: true }
   },
   {
     id: 'overlord',
@@ -783,7 +821,9 @@ export const ENEMY_PRESETS = [
     head: 'head_command', torso: 'torso_striker', arms: 'arms_duelist',
     legs: 'legs_strider', backpack: 'back_vesper',
     rightWeapon: 'wp_sniper', leftWeapon: 'wp_twin_saber',
-    colors: { primary: '#2b2f38', secondary: '#15181e', accent: '#c9ff3d', frame: '#0a0c10', glow: '#c9ff3d' }
+    colors: { primary: '#2b2f38', secondary: '#15181e', accent: '#c9ff3d', frame: '#0a0c10', glow: '#c9ff3d' },
+    unlocks: ['arms_duelist', 'legs_juggernaut', 'back_vesper', 'back_omni', 'back_overdrive', 'wp_sniper', 'wp_lance', 'wp_barrier'],
+    ai: { band: [24, 70], aggression: 0.60, dodge: 0.80, strafe: 0.70, jumpiness: 0.70, discipline: 0.75, flank: 0.50, holdGround: false }
   }
 ];
 
