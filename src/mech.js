@@ -854,9 +854,13 @@ export function buildMech(loadout) {
   const weaponL = buildWeapon(ctx, parts.leftWeapon, M, glowRefs);
   weaponR.group.position.set(0, -parts.arms.geo.thickness * 0.2, -0.1);
   weaponL.group.position.set(0, -parts.arms.geo.thickness * 0.2, -0.1);
-  // A blade points down the hand's -Z; tilt it up so it reads as "held", not "dragged".
-  if (parts.rightWeapon.kind === 'melee') weaponR.group.rotation.x = 0.5;
-  if (parts.leftWeapon.kind === 'melee') weaponL.group.rotation.x = 0.5;
+  // A weapon is gripped across the hand, so its barrel starts perpendicular to
+  // the arm. Rolling it a quarter turn puts the barrel in line with the arm,
+  // which lets a single shoulder angle aim both.
+  for (const [part, built] of [[parts.rightWeapon, weaponR], [parts.leftWeapon, weaponL]]) {
+    // A blade points down the hand's -Z; tilt it up so it reads as "held", not "dragged".
+    built.group.rotation.x = part.kind === 'melee' ? 0.5 : -Math.PI / 2;
+  }
   armR.hand.add(weaponR.group);
   armL.hand.add(weaponL.group);
 
@@ -1019,10 +1023,11 @@ export function updateMech(mech, dt, s) {
   }
 
   /* -------------------------------------------------------------- torso */
+  const aim = s.aimPitch || 0;
   const lean = THREE.MathUtils.clamp(norm * 0.16 + (boosting ? 0.14 : 0), 0, 0.34);
   b.torso.rotation.x = THREE.MathUtils.lerp(b.torso.rotation.x, loco === 'tread' ? lean * 0.4 : lean, dt * 5);
   b.torso.rotation.z = THREE.MathUtils.lerp(b.torso.rotation.z, -(s.strafe || 0) * 0.1, dt * 5);
-  b.neck.rotation.x = THREE.MathUtils.lerp(b.neck.rotation.x, -lean * 0.7 - (s.aimPitch || 0) * 0.35, dt * 6);
+  b.neck.rotation.x = THREE.MathUtils.lerp(b.neck.rotation.x, -lean * 0.7 + aim * 0.45, dt * 6);
 
   if (b.radar) b.radar.rotation.y += dt * 2.4;
 
@@ -1030,7 +1035,6 @@ export function updateMech(mech, dt, s) {
   mech._recoil = Math.max(0, mech._recoil - dt * 5.5);
   mech._recoilL = Math.max(0, mech._recoilL - dt * 5.5);
 
-  const aim = s.aimPitch || 0;
   const kindR = mech.weapons.right.part.kind;
   const kindL = mech.weapons.left.part.kind;
   const rIsMelee = kindR === 'melee';
@@ -1038,18 +1042,22 @@ export function updateMech(mech, dt, s) {
   const lIsShield = kindL === 'shield';
   const lIsNone = kindL === 'none';
 
-  const targetR = rIsMelee ? -0.35 : -Math.PI / 2 + aim * 0.9;
+  // Shoulder pitch convention: the arm hangs along -Y, so rotating +PI/2 about
+  // X points it down the mech's forward axis. Adding the aim angle then tracks
+  // the target through the full vertical range, straight down included.
+  const aimed = Math.PI / 2 + aim;
+  const targetR = rIsMelee ? -0.35 : aimed;
   let targetL;
   if (lIsMelee) targetL = -0.35;
-  else if (lIsShield) targetL = -0.95;
+  else if (lIsShield) targetL = Math.PI / 2 - 0.3;
   else if (lIsNone) targetL = -0.12 + Math.sin(mech._phase) * 0.3;
-  else targetL = -Math.PI / 2 + aim * 0.9;
+  else targetL = aimed;
 
-  b.armR.shoulder.rotation.x = THREE.MathUtils.lerp(b.armR.shoulder.rotation.x, targetR + mech._recoil * 0.4, dt * 11);
+  b.armR.shoulder.rotation.x = THREE.MathUtils.lerp(b.armR.shoulder.rotation.x, targetR - mech._recoil * 0.4, dt * 11);
   b.armR.shoulder.rotation.z = THREE.MathUtils.lerp(b.armR.shoulder.rotation.z, rIsMelee ? -0.18 : 0.1, dt * 9);
   b.armR.elbow.rotation.x = THREE.MathUtils.lerp(b.armR.elbow.rotation.x, rIsMelee ? -0.45 : -0.12 - mech._recoil * 0.3, dt * 11);
 
-  b.armL.shoulder.rotation.x = THREE.MathUtils.lerp(b.armL.shoulder.rotation.x, targetL + mech._recoilL * 0.4, dt * 11);
+  b.armL.shoulder.rotation.x = THREE.MathUtils.lerp(b.armL.shoulder.rotation.x, targetL - mech._recoilL * 0.4, dt * 11);
   b.armL.shoulder.rotation.z = THREE.MathUtils.lerp(b.armL.shoulder.rotation.z, lIsShield ? 0.5 : -0.1, dt * 9);
   b.armL.elbow.rotation.x = THREE.MathUtils.lerp(
     b.armL.elbow.rotation.x,
@@ -1130,11 +1138,14 @@ export function poseGarage(mech, t) {
   b.neck.rotation.set(-idle, Math.sin(t * 0.42) * 0.14, 0);
   if (b.radar) b.radar.rotation.y += 0.012;
 
+  // A gun's barrel now runs along the arm, so a fully lowered arm would point
+  // it at the floor. Ranged hands rest a little forward instead.
   const lKind = mech.weapons.left.part.kind;
   const rKind = mech.weapons.right.part.kind;
-  b.armR.shoulder.rotation.set(-0.12 + idle * 0.5, 0, 0.13);
+  const restAngle = (kind) => (kind === 'melee' || kind === 'none' ? -0.12 : 0.6);
+  b.armR.shoulder.rotation.set(restAngle(rKind) + idle * 0.5, 0, 0.13);
   b.armR.elbow.rotation.x = rKind === 'none' ? -0.1 : -0.32;
-  b.armL.shoulder.rotation.set(-0.12 + idle * 0.5, 0, -0.13);
+  b.armL.shoulder.rotation.set(restAngle(lKind) + idle * 0.5, 0, -0.13);
   b.armL.elbow.rotation.x = lKind === 'shield' ? -0.55 : lKind === 'none' ? -0.1 : -0.32;
 
   for (const key of ['right', 'left']) {
