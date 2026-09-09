@@ -140,6 +140,40 @@ function buildHead(ctx, part, M) {
     }
     group.add(boxMesh(ctx, g.width * 0.34, g.height * 0.16, 0.14, M.accent, { y: g.height * 0.5, z: -g.depth * 0.48 }));
     group.add(sphMesh(ctx, 0.09, M.glow, { y: g.height * 0.52, z: -g.depth * 0.56 }));
+  } else if (g.crest === 'array') {
+    // fan of jamming rods, longest at the centre
+    for (let i = -2; i <= 2; i++) {
+      const len = g.height * (1.5 - Math.abs(i) * 0.28);
+      group.add(cylMesh(ctx, 0.025, 0.04, len, 5, M.accent, {
+        x: i * g.width * 0.19,
+        y: g.height * 0.5 + len * 0.5,
+        z: g.depth * 0.12,
+        rz: i * 11 * DEG
+      }));
+      group.add(sphMesh(ctx, 0.05, M.glow, {
+        x: i * g.width * 0.19 + Math.sin(i * 11 * DEG) * len,
+        y: g.height * 0.5 + len,
+        z: g.depth * 0.12
+      }));
+    }
+    group.add(boxMesh(ctx, g.width * 1.05, 0.12, 0.22, M.frame, { y: g.height * 0.5, z: g.depth * 0.12 }));
+  } else if (g.crest === 'horns') {
+    for (const s of [-1, 1]) {
+      group.add(boxMesh(ctx, 0.16, g.height * 0.8, 0.22, M.accent, {
+        x: s * g.width * 0.42,
+        y: g.height * 0.62,
+        z: -g.depth * 0.05,
+        rz: s * 26 * DEG
+      }));
+      group.add(boxMesh(ctx, 0.13, g.height * 0.34, 0.18, M.accent, {
+        x: s * g.width * 0.62,
+        y: g.height * 0.98,
+        z: -g.depth * 0.05,
+        rz: s * 52 * DEG
+      }));
+    }
+    group.add(boxMesh(ctx, g.width * 0.44, g.height * 0.3, 0.16, M.accent, { y: g.height * 0.6, z: -g.depth * 0.46 }));
+    group.add(sphMesh(ctx, 0.1, M.glow, { y: g.height * 0.66, z: -g.depth * 0.54 }));
   } else if (g.crest === 'scope') {
     group.add(cylMesh(ctx, 0.15, 0.17, g.depth * 1.7, 12, M.frame, { y: g.height * 0.5, z: -g.depth * 0.25, rx: Math.PI / 2 }));
     group.add(cylMesh(ctx, 0.13, 0.13, 0.1, 12, M.glass, { y: g.height * 0.5, z: -g.depth * 1.08, rx: Math.PI / 2 }));
@@ -445,6 +479,36 @@ function buildBackpack(ctx, part, M, glowRefs, thrusterRefs, funnelDocks) {
     group.add(n);
     glowRefs.push(n);
     thrusterRefs.push(n);
+  } else if (style === 'sentry') {
+    // two folded turret platforms in drop cradles, released in the arena
+    group.add(boxMesh(ctx, 1.8, 0.5, 0.8, M.primary, { y: 0.42, z: 0.16 }));
+    for (const s of [-1, 1]) {
+      group.add(boxMesh(ctx, 0.7, 0.72, 0.78, M.frame, { x: s * 0.62, y: 0.06, z: 0.3 }));
+      const lamp = cylMesh(ctx, 0.13, 0.13, 0.1, 10, M.glow, { x: s * 0.62, y: 0.06, z: 0.72, rx: Math.PI / 2 });
+      group.add(lamp);
+      glowRefs.push(lamp);
+      const dock = new THREE.Object3D();
+      dock.position.set(s * 0.62, 0.06, 0.3);
+      group.add(dock);
+      funnelDocks.push(dock);
+    }
+    const n = cylMesh(ctx, 0.17, 0.21, 0.38, 10, M.glow, { y: -0.62, z: 0.1 });
+    group.add(n);
+    glowRefs.push(n);
+    thrusterRefs.push(n);
+  } else if (style === 'plating') {
+    // no thrusters at all - just layered slab armour over the core
+    group.add(boxMesh(ctx, 1.95, 1.55, 0.6, M.primary, { y: 0.08, z: 0.28 }));
+    group.add(boxMesh(ctx, 1.6, 1.2, 0.4, M.secondary, { y: 0.12, z: 0.62 }));
+    for (const s of [-1, 1]) {
+      group.add(boxMesh(ctx, 0.42, 1.9, 0.72, M.primary, { x: s * 1.05, y: 0.1, z: 0.18, rz: s * -7 * DEG }));
+      group.add(boxMesh(ctx, 0.2, 0.5, 0.5, M.accent, { x: s * 1.24, y: 0.72, z: 0.18 }));
+    }
+    for (let i = 0; i < 3; i++) {
+      const vent = boxMesh(ctx, 1.2, 0.1, 0.12, M.glow, { y: 0.62 - i * 0.34, z: 0.84 });
+      group.add(vent);
+      glowRefs.push(vent);
+    }
   } else if (style === 'radar') {
     const mast = cylMesh(ctx, 0.09, 0.11, 1.1, 8, M.frame, { y: 0.85, z: 0.1 });
     group.add(mast);
@@ -550,7 +614,7 @@ function buildWeapon(ctx, part, M, glowRefs) {
   }
 
   /* ---------------------------------------------------------- melee */
-  if (style === 'blade' || style === 'twinblade' || style === 'lance' || style === 'axe') {
+  if (style === 'blade' || style === 'twinblade' || style === 'lance' || style === 'axe' || style === 'whip') {
     group.add(cylMesh(ctx, 0.11, 0.13, 0.7, 10, M.frame, { rx: Math.PI / 2 }));
     group.add(boxMesh(ctx, 0.42, 0.14, 0.16, M.accent, { z: -0.34 }));
 
@@ -580,6 +644,27 @@ function buildWeapon(ctx, part, M, glowRefs) {
       group.add(edge);
       blades.push(edge);
       group.add(boxMesh(ctx, 0.16, 0.5, 0.3, M.accent, { z: -g.length * 0.66 + 0.42 }));
+    } else if (style === 'whip') {
+      // segmented lash: a short haft, then a run of links that fall away in size
+      group.add(cylMesh(ctx, 0.14, 0.16, 0.85, 10, M.primary, { z: -0.42, rx: Math.PI / 2 }));
+      group.add(cylMesh(ctx, 0.22, 0.22, 0.2, 10, M.accent, { z: -0.9, rx: Math.PI / 2 }));
+      const links = 9;
+      for (let i = 0; i < links; i++) {
+        const t = i / (links - 1);
+        const seg = mesh(ctx, new THREE.BoxGeometry(0.16 - t * 0.07, 0.16 - t * 0.07, g.length / links * 0.72), beamMat, {
+          x: Math.sin(t * 5.2) * 0.16,
+          y: -t * t * 0.5,
+          z: -1.05 - t * (g.length - 1.1),
+          shadow: false
+        });
+        group.add(seg);
+        blades.push(seg);
+      }
+      const barb = mesh(ctx, new THREE.ConeGeometry(0.12, 0.44, 8), beamMat, {
+        y: -0.52, z: -g.length - 0.1, rx: -Math.PI / 2, shadow: false
+      });
+      group.add(barb);
+      blades.push(barb);
     } else {
       // lance: long solid shaft with an energy spike
       group.add(cylMesh(ctx, 0.14, 0.2, g.length * 0.62, 10, M.primary, { z: -g.length * 0.3, rx: Math.PI / 2 }));
@@ -777,7 +862,11 @@ export function buildMech(loadout) {
   const parts = resolveLoadout(loadout);
   const stats = computeStats(loadout);
   const style = parts.legs.geo.style;
-  const locomotion = style === 'tread' ? 'tread' : style === 'hover' ? 'hover' : style === 'quad' ? 'quad' : 'biped';
+  const locomotion =
+    style === 'tread' ? 'tread'
+      : style === 'hover' ? 'hover'
+        : style === 'quad' ? 'quad'
+          : style === 'tripod' ? 'tripod' : 'biped';
 
   const root = new THREE.Group();
   root.name = 'mech';
@@ -798,10 +887,25 @@ export function buildMech(loadout) {
     hipHeight = skirt.hipHeight;
     pelvis.add(skirt.group);
   } else {
-    const scale = locomotion === 'quad' ? 0.86 : 1;
-    const count = locomotion === 'quad' ? 4 : 2;
+    const scale = locomotion === 'quad' ? 0.86 : locomotion === 'tripod' ? 0.92 : 1;
+    const count = locomotion === 'quad' ? 4 : locomotion === 'tripod' ? 3 : 2;
     const hipWidth = parts.torso.geo.width * 0.3 + parts.legs.geo.thickness * 0.45;
     for (let i = 0; i < count; i++) {
+      if (locomotion === 'tripod') {
+        // Two legs forward, one trailing spine. Even thirds of a circle, rotated
+        // so the odd leg sits behind the hull rather than under the guns.
+        const a = Math.PI + (i * 2 * Math.PI) / 3;
+        const x = Math.sin(a) * hipWidth * 1.35;
+        const z = Math.cos(a) * parts.torso.geo.depth * 0.95;
+        const leg = buildLeg(ctx, parts.legs, M, x < 0 ? -1 : 1, glowRefs, scale);
+        leg.hip.position.set(x, 0, z);
+        leg.hip.rotation.y = -a + Math.PI;
+        // even thirds of the gait cycle keeps two feet planted at all times
+        leg.phase = (i * 2 * Math.PI) / 3;
+        pelvis.add(leg.hip);
+        legs.push(leg);
+        continue;
+      }
       const side = i % 2 === 0 ? -1 : 1;
       const row = i < 2 ? 1 : -1; // +1 = rear pair for quads
       const leg = buildLeg(ctx, parts.legs, M, side, glowRefs, scale);
@@ -819,6 +923,9 @@ export function buildMech(loadout) {
     pelvis.add(boxMesh(ctx, hipWidth * 2.0, 0.5, parts.torso.geo.depth * 0.7, M.frame, { y: 0.12 }));
     if (locomotion === 'quad') {
       pelvis.add(boxMesh(ctx, hipWidth * 1.4, 0.42, parts.torso.geo.depth * 2.0, M.secondary, { y: 0.05 }));
+    } else if (locomotion === 'tripod') {
+      pelvis.add(cylMesh(ctx, hipWidth * 1.5, hipWidth * 1.5, 0.46, 6, M.secondary, { y: 0.06 }));
+      pelvis.add(cylMesh(ctx, hipWidth * 0.5, hipWidth * 0.72, 0.7, 6, M.glow, { y: -0.24 }));
     }
   }
   pelvis.position.y = hipHeight;

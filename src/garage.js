@@ -19,6 +19,7 @@ import {
   DIFFICULTIES,
   ENEMY_PRESETS,
   DEFAULT_LOADOUT,
+  TOTAL_PARTS,
   weaponDps,
   getPart,
   computeStats,
@@ -212,7 +213,8 @@ export class Garage {
       pips[i].className = this.progress.defeated.includes(ENEMY_PRESETS[i].id) ? 'on' : '';
       pips[i].title = ENEMY_PRESETS[i].name;
     }
-    this.ladderDom.label.innerHTML = `<b>${status.defeated}/${status.total}</b> FRAMES &middot; <b>${this.unlockedParts.size}/52</b> PARTS`;
+    this.ladderDom.label.innerHTML =
+      `<b>${status.defeated}/${status.total}</b> FRAMES &middot; <b>${this.unlockedParts.size}/${TOTAL_PARTS}</b> PARTS`;
 
     const nextFoe = ENEMY_PRESETS.find((e) => !this.progress.defeated.includes(e.id));
     this.ladderDom.next.textContent = nextFoe
@@ -444,7 +446,8 @@ export class Garage {
         const rw = getPart(foe.rightWeapon);
         const lw = getPart(foe.leftWeapon);
         const guns = [rw, lw].filter((w) => w && w.kind !== 'none').map((w) => w.name).join(' / ');
-        kit.textContent = `AR ${stats.maxHp} · SPD ${stats.walkSpeed.toFixed(1)} · ${guns || 'UNARMED'}`;
+        const armour = Math.round(stats.maxHp * (foe.hpMult || 1));
+        kit.textContent = `AR ${armour} · SPD ${stats.walkSpeed.toFixed(1)} · ${guns || 'UNARMED'}`;
         b.appendChild(kit);
       }
 

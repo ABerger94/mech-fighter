@@ -169,6 +169,9 @@ class Game {
     if (this.touch) this.goFullscreen();
     this.arena.start(loadout, settings);
     this.setState(STATES.ARENA);
+    // start() may have swapped to a different arena environment; setState
+    // short-circuits when we were already in the arena, so re-bind here.
+    this.renderer.use(this.arena.scene, this.arena.camera);
   }
 
   rematch() {

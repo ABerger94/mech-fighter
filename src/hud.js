@@ -26,6 +26,8 @@ export class Hud {
     this.distance = $('hud-distance');
     this.timer = $('hud-timer');
     this.crosshair = $('crosshair');
+    this.hitmarker = $('hitmarker');
+    this.damageArrows = $('damage-arrows');
     this.lock = $('lock-marker');
     this.vignette = $('damage-vignette');
     this.killfeed = $('killfeed');
@@ -36,6 +38,15 @@ export class Hud {
 
     this._vignetteTimer = 0;
     this._feed = [];
+
+    // small pool of reusable damage wedges; four overlapping hits is plenty
+    this._arrows = [];
+    for (let i = 0; i < 4; i++) {
+      const el = document.createElement('i');
+      this.damageArrows.appendChild(el);
+      this._arrows.push({ el, life: 0 });
+    }
+    this._arrowNext = 0;
   }
 
   setNames(player, enemy) {
@@ -104,6 +115,33 @@ export class Hud {
     this.lock.style.top = `${screen.y}px`;
   }
 
+  /**
+   * Confirm a landed shot. Fires on the frame the damage is applied, so the
+   * feedback is immediate even when the impact effect is off screen.
+   * @param {boolean} kill the hit finished the target
+   */
+  hitMarker(kill = false) {
+    const el = this.hitmarker;
+    el.classList.remove('is-hit', 'is-kill');
+    // force a reflow so the animation restarts on rapid consecutive hits
+    void el.offsetWidth;
+    el.classList.add(kill ? 'is-kill' : 'is-hit');
+  }
+
+  /**
+   * Show where a hit came from.
+   * @param {number} angle radians, 0 = dead ahead, positive = to the right
+   */
+  damageFrom(angle) {
+    const slot = this._arrows[this._arrowNext];
+    this._arrowNext = (this._arrowNext + 1) % this._arrows.length;
+    const el = slot.el;
+    el.classList.remove('is-on');
+    void el.offsetWidth;
+    el.style.transform = `translate(-50%, -50%) rotate(${(angle * 180) / Math.PI}deg) translateY(-96px)`;
+    el.classList.add('is-on');
+  }
+
   flashDamage(intensity = 1) {
     this.vignette.style.opacity = String(Math.min(0.95, intensity));
     this._vignetteTimer = 0.35;
@@ -140,6 +178,8 @@ export class Hud {
   }
 
   reset() {
+    this.hitmarker.classList.remove('is-hit', 'is-kill');
+    for (const a of this._arrows) a.el.classList.remove('is-on');
     this.killfeed.innerHTML = '';
     this._feed.length = 0;
     this.vignette.style.opacity = '0';
