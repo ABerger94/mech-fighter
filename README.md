@@ -121,6 +121,18 @@ holding:
 - **Multi-hit melee** — the chain whip resolves four separate links off one
   swing across a 170-degree sweep, so it catches anything that walks through the
   arc rather than only what was in front of you when it started.
+- **The tether** — the Grapnel Tether fires a magnetic harpoon on a chain. It
+  acquires anything inside its launch cone, in range and in the open, and the
+  head then steers itself on, so a fair shot bites rather than needing to be
+  threaded. Once it holds, the two frames are reeled together and the closing
+  speed is split by weight: harpoon something light and it comes to you,
+  harpoon something heavy and you go to it. Measured from 34 m, a 1560 kg
+  interceptor is dragged 15.6 m while you cover 11.7 m; a 3870 kg siege frame
+  moves 9.5 m and pulls you 17.8 m onto it. Either way the gap closes to about
+  7 m in 1.3 seconds, well inside blade range, which is the whole point of
+  carrying one. The chain parts on cover, on the target dying, or after 1.6
+  seconds, and the pull is applied outside the steering controller so walking
+  the other way does not shrug it off.
 
 ## The ladder
 
@@ -138,17 +150,17 @@ battlefields, so the roster doubles as the unlock ladder:
 | Overlord ZX | 6 parts, and Vesper Twin |
 | Vesper Twin | 3 parts, and Citadel Battery |
 | Citadel Battery | 5 parts, Slag Foundry, and Revenant |
-| Revenant | 3 parts, and Sovereign |
+| Revenant | 4 parts, and Sovereign |
 | Sovereign | the last 3 parts |
 
-All 64 parts have exactly one unlock path. Locked entries stay visible in the
+All 65 parts have exactly one unlock path. Locked entries stay visible in the
 garage with the opponent that drops them, your record persists in
 `localStorage`, and the pilot record panel can reset it. Picking a random
 contract only ever draws from what you have earned.
 
 ## Building a mech
 
-Seven slots and 64 parts, each changing the derived stats:
+Seven slots and 65 parts, each changing the derived stats:
 
 - **Head** (8) — sensor range, lock-on speed, reload assistance, and on the
   Oracle ECM a jamming array that adds to your stealth rating
@@ -160,10 +172,10 @@ Seven slots and 64 parts, each changing the derived stats:
 - **Backpack** (9) — thrusters, an auxiliary reactor, a missile rack, a radar
   array, an overdrive booster, a field repair unit, funnel bits, deployable
   sentry turrets, or slabs of bolt-on plating
-- **Right / left hand** (23) — beam rifles, a railgun, a charge sniper, a
+- **Right / left hand** (24) — beam rifles, a railgun, a charge sniper, a
   gatling, a shotgun, a bazooka, an arcing mortar, a proximity-fuzed flak
   battery, an EMP projector, homing missiles, seeker orbs, a sustained laser, a
-  plasma sprayer, five melee weapons and two shields
+  plasma sprayer, a magnetic grapnel tether, five melee weapons and two shields
 
 ### Locomotion
 
@@ -207,7 +219,7 @@ ground, so they fight differently as well as shooting differently:
 | Overlord ZX | Adaptive ace, mixes every stance | 37 m |
 | Vesper Twin | Jammer; flanks constantly and drains your generator | 43 m |
 | Citadel Battery | Tripod gun platform; never closes, never leaves the ground | 70 m |
-| Revenant | Chain-whip rusher that goes berserk when wounded | 23 m |
+| Revenant | Harpoons you into chain-whip range, then goes berserk when wounded | 23 m |
 | Sovereign | Three-phase boss: ranged, then funnels, then the lance | 64 m |
 
 The last two rungs change behaviour mid-match rather than just having more
@@ -249,7 +261,9 @@ src/
   energy, and charging when it carries a blade. Its aim error grows with range
   and shrinks with difficulty, and it holds charge weapons, deploys its own
   funnels and refuses to jump on legs that cannot. Multi-phase opponents swap
-  that whole profile at fixed armour thresholds.
+  that whole profile at fixed armour thresholds. A frame carrying a tether
+  throws it as soon as you are out past the reach of whatever it means to hit
+  you with, so the Revenant closes on its own terms rather than jogging at you.
 - Landed shots pulse a hit marker on the crosshair, throttled so a sustained
   laser reads as a pulse rather than a strobe, and incoming damage puts a wedge
   around the reticle pointing back along the line the shot came from, resolved

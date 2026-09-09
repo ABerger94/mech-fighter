@@ -729,6 +729,41 @@ function buildWeapon(ctx, part, M, glowRefs) {
     return { group, muzzle, blades, spinner };
   }
 
+  if (style === 'harpoon') {
+    // squat launcher with a cable drum on the side and the barb still seated
+    const len = g.length;
+    const bulk = g.bulk;
+    group.add(boxMesh(ctx, bulk * 1.8, bulk * 1.7, len * 0.7, M.primary, { z: -len * 0.18 }));
+    group.add(cylMesh(ctx, bulk * 0.62, bulk * 0.68, len * 0.9, 12, M.secondary, { z: -len * 0.42, rx: Math.PI / 2 }));
+    // cable drum
+    const drum = cylMesh(ctx, bulk * 0.9, bulk * 0.9, bulk * 0.7, 12, M.frame, { x: bulk * 1.1, z: len * 0.02, rz: Math.PI / 2 });
+    group.add(drum);
+    for (let i = 0; i < 3; i++) {
+      group.add(cylMesh(ctx, bulk * (0.95 - i * 0.06), bulk * (0.95 - i * 0.06), 0.06, 12, M.accent, {
+        x: bulk * (0.8 + i * 0.2), z: len * 0.02, rz: Math.PI / 2
+      }));
+    }
+    // magnetic coils round the muzzle
+    for (let i = 0; i < 2; i++) {
+      const coil = cylMesh(ctx, bulk * 0.78, bulk * 0.78, 0.12, 12, M.glow, { z: -len * (0.68 + i * 0.13), rx: Math.PI / 2 });
+      group.add(coil);
+      glowRefs.push(coil);
+    }
+    // the barb, sitting in the tube until it is fired
+    group.add(mesh(ctx, new THREE.ConeGeometry(bulk * 0.42, len * 0.36, 6), beamMat, {
+      z: -len * 0.92, rx: -Math.PI / 2, shadow: false
+    }));
+    for (const sx of [-1, 1]) {
+      group.add(boxMesh(ctx, 0.08, bulk * 0.5, bulk * 0.5, M.accent, {
+        x: sx * bulk * 0.34, z: -len * 0.76, rz: sx * 26 * DEG
+      }));
+    }
+    group.add(boxMesh(ctx, bulk * 0.5, bulk * 1.1, bulk * 0.6, M.frame, { y: -bulk * 1.3, z: 0.05 }));
+    muzzle.position.set(0, 0, -len * 1.02);
+    group.add(muzzle);
+    return { group, muzzle, blades, spinner };
+  }
+
   if (style === 'mortar') {
     group.add(boxMesh(ctx, 0.9, 0.5, 1.1, M.frame, { y: -0.3 }));
     group.add(cylMesh(ctx, 0.34, 0.38, g.length, 12, M.primary, { y: 0.42, z: -0.2, rx: -62 * DEG }));
