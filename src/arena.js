@@ -10,12 +10,18 @@
 import * as THREE from 'three';
 import { createArenaEnvironment, ChaseCamera, ARENAS, getArena } from './renderer.js';
 import { buildMech, disposeMech, updateMech, punchRecoil, playMelee, flashDamage, setSpin } from './mech.js';
-import { ENEMY_PRESETS, DIFFICULTIES, getPart } from './data/parts.js';
+import { ENEMY_PRESETS, DIFFICULTIES, getPart, survivalWave } from './data/parts.js';
 import { Effects } from './effects.js';
 import { audio } from './audio.js';
 
 const GRAVITY = 34;
 const MATCH_TIME = 180;
+/** Survival: seconds between a frame going down and the next one touching down. */
+const WAVE_BREAK = 3.4;
+/** Survival: fraction of maximum armour welded back on between waves. */
+const WAVE_REPAIR = 0.15;
+/** Survival: how high a relief frame is dropped in from. */
+const DROP_HEIGHT = 78;
 const GROUND_ACCEL = 78;
 const AIR_ACCEL = 30;
 const JUMP_SPEED = 15.5;
@@ -247,6 +253,8 @@ class Fighter {
     };
 
     this.meleePending = null;
+    /** True while a survival relief frame is still descending under thrust. */
+    this.dropping = false;
     this.tether = null;
     /** External per-frame velocity from a magnetic tether; the legs cannot fight it. */
     this.tetherPull = null;
@@ -320,6 +328,10 @@ export class Arena {
     this.finished = false;
     this.endTimer = 0;
     this.elapsed = 0;
+    this.survival = false;
+    this.wave = 1;
+    this.wavesCleared = 0;
+    this.waveBreak = 0;
     this._aimPoint = new THREE.Vector3();
     this._locked = false;
     this._hitMarkTimer = 0;
@@ -371,9 +383,15 @@ export class Arena {
     const diffId = typeof settings === 'string' ? settings : settings.difficulty;
     this.difficulty = DIFFICULTIES.find((d) => d.id === diffId) || DIFFICULTIES[1];
 
+    this.survival = settings.mode === 'survival';
+    this.wave = 1;
+    this.wavesCleared = 0;
+    this.waveBreak = 0;
+
     const oppId = settings.opponent;
-    const preset =
-      !oppId || oppId === 'random'
+    const preset = this.survival
+      ? survivalWave(1)
+      : !oppId || oppId === 'random'
         ? ENEMY_PRESETS[Math.floor(Math.random() * ENEMY_PRESETS.length)]
         : ENEMY_PRESETS.find((e) => e.id === oppId) || ENEMY_PRESETS[0];
 
@@ -409,9 +427,10 @@ export class Arena {
     this.hud.reset();
     this.hud.setNames(this.player.name, this.enemy.name);
     this.hud.feed(`${this.arenaDef.name}`, 'warn');
-    this.hud.feed('COMBAT START', 'warn');
+    this.hud.feed(this.survival ? 'SURVIVAL - WAVE 1' : 'COMBAT START', 'warn');
 
-    this.time = MATCH_TIME;
+    // survival has no clock to beat, so the timer counts the run up instead
+    this.time = this.survival ? 0 : MATCH_TIME;
     this.running = true;
     this.finished = false;
     this.paused = false;
@@ -449,6 +468,10 @@ export class Arena {
     this.funnelMats.length = 0;
     this.player = null;
     this.enemy = null;
+    this.survival = false;
+    this.wave = 1;
+    this.wavesCleared = 0;
+    this.waveBreak = 0;
     this.running = false;
     this.finished = false;
     this.endTimer = 0;
@@ -1635,7 +1658,141 @@ export class Arena {
     audio.explosion(1.4);
     this.chase.addShake(1.2);
     this.hud.feed(`${f.name} DESTROYED`, f.isPlayer ? 'bad' : '');
+
+    // In survival the run only ends when the player does; anything else just
+    // clears the wave and calls in the next frame.
+    if (this.survival && !f.isPlayer) {
+      this.wavesCleared += 1;
+      this.waveBreak = WAVE_BREAK;
+      this.hud.feed(`WAVE ${this.wave} CLEARED`, 'good');
+      this._patchUp(this.player);
+      audio.victory();
+      return;
+    }
+
     this._finish(!f.isPlayer, f.isPlayer ? 'FRAME LOST' : 'ENEMY FRAME DESTROYED');
+  }
+
+  /**
+   * Field repair between survival waves: a slice of armour back, a full
+   * generator, and every magazine topped up.
+   */
+  _patchUp(f) {
+    if (!f || !f.alive) return;
+    const healed = Math.min(f.maxHp, f.hp + f.maxHp * WAVE_REPAIR);
+    const gained = Math.round(healed - f.hp);
+    f.hp = healed;
+    f.energy = f.maxEnergy;
+    f.energyLock = 0;
+    for (const key of ['right', 'left', 'shoulder']) {
+      const w = f.weapons[key];
+      if (!w) continue;
+      w.reloading = false;
+      w.reloadTimer = 0;
+      w.cooldown = 0;
+      if (w.usesAmmo) w.ammo = w.part.mag;
+    }
+    this._lowHpWarned = f.hp / f.maxHp < 0.28;
+    if (f.isPlayer && gained > 0) this.hud.feed(`FIELD REPAIR +${gained}`, 'good');
+  }
+
+  /**
+   * Drop the next survival frame in. It arrives from orbit under retro-thrust
+   * rather than blinking into existence, which gives the player the break
+   * between waves as a readable event.
+   */
+  _spawnWave() {
+    this.waveBreak = 0;
+    const old = this.enemy;
+    if (old) {
+      this._detachTether(old);
+      for (const other of [this.player]) {
+        if (other && other.tether && other.tether.target === old) this._detachTether(other);
+      }
+      this._disposeFunnels(old);
+      for (const key of ['right', 'left', 'shoulder']) {
+        const w = old.weapons[key];
+        if (w && w.beamMesh) {
+          if (w.beamMesh.parent) w.beamMesh.parent.remove(w.beamMesh);
+          w.beamMesh = null;
+        }
+      }
+      this.scene.remove(old.root);
+      disposeMech(old.mech);
+    }
+
+    this.wave += 1;
+    const preset = survivalWave(this.wave);
+    const e = new Fighter(preset, false, preset.name);
+    e.skill = preset.skill;
+    e.profile = preset.ai || null;
+    e.phases = preset.phases || null;
+    e.presetId = preset.id;
+    this.enemy = e;
+    this.scene.add(e.root);
+
+    this._pickDropPoint(e, _v);
+    e.pos.set(_v.x, DROP_HEIGHT, _v.z);
+    e.vel.set(0, -26, 0);
+    e.yaw = yawTowards(e.pos, this.player.pos);
+    e.grounded = false;
+    e.dropping = true;
+    this.syncTransform(e);
+
+    this._createFunnels(e);
+    this._initAi();
+
+    this.hud.setNames(this.player.name, e.name);
+    this.hud.feed(`WAVE ${this.wave} - ${e.name}`, 'warn');
+    audio.alarm();
+  }
+
+  /**
+   * A landing spot in the open, a fair distance out, clear of cover. Falls back
+   * to the best of the candidates rather than failing.
+   */
+  _pickDropPoint(f, out) {
+    const edge = this.half - 12;
+    let best = null;
+    for (let i = 0; i < 24; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 46 + Math.random() * 26;
+      const x = THREE.MathUtils.clamp(this.player.pos.x + Math.cos(angle) * dist, -edge, edge);
+      const z = THREE.MathUtils.clamp(this.player.pos.z + Math.sin(angle) * dist, -edge, edge);
+      const gap = Math.hypot(x - this.player.pos.x, z - this.player.pos.z);
+      // reject anything standing on top of cover so the drop lands on the deck
+      const clear = this.groundHeightAt(x, z, f.radius) < 0.6;
+      const score = (clear ? 100 : 0) + gap;
+      if (!best || score > best.score) best = { x, z, score };
+      if (clear && gap > 42) break;
+    }
+    return out.set(best.x, 0, best.z);
+  }
+
+  /** Retro-thrusted descent. The AI stays offline until the feet are down. */
+  _updateDrop(e, dt) {
+    e.vel.y = Math.max(-34, e.vel.y - GRAVITY * 0.35 * dt);
+    e.pos.y += e.vel.y * dt;
+    // braking thrust: the plume leaves the feet downward, under the frame
+    this.effects.thruster(_v.copy(e.pos), _v2.set(0, -1, 0), e.mech.colors.glow, 1.6);
+
+    const gy = this.groundHeightAt(e.pos.x, e.pos.z, e.radius) + e.stats.hoverHeight;
+    e.groundY = gy;
+    if (e.pos.y <= gy) {
+      e.pos.y = gy;
+      e.vel.set(0, 0, 0);
+      e.grounded = true;
+      e.dropping = false;
+      e.yaw = yawTowards(e.pos, this.player.pos);
+      this.effects.landingDust(_v.set(e.pos.x, gy, e.pos.z), 2.4);
+      this.effects.explosion(_v, 0xffb45e, 0.7);
+      audio.land(1.4);
+      if (this.player) {
+        const d = e.pos.distanceTo(this.player.pos);
+        this.chase.addShake(Math.max(0.15, 0.7 - d / 120));
+      }
+    }
+    this.syncTransform(e);
   }
 
   _finish(win, reason) {
@@ -2260,17 +2417,29 @@ export class Arena {
     this.envUpdate(dt, this.elapsed);
 
     if (!this.finished) {
-      this.time -= dt;
-      if (this.time <= 0) {
-        this.time = 0;
-        const pPct = this.player.hp / this.player.maxHp;
-        const ePct = this.enemy.hp / this.enemy.maxHp;
-        this._finish(pPct >= ePct, 'TIME OVER');
+      if (this.survival) {
+        this.time += dt;
+      } else {
+        this.time -= dt;
+        if (this.time <= 0) {
+          this.time = 0;
+          const pPct = this.player.hp / this.player.maxHp;
+          const ePct = this.enemy.hp / this.enemy.maxHp;
+          this._finish(pPct >= ePct, 'TIME OVER');
+        }
       }
     }
 
+    if (this.survival && this.waveBreak > 0 && !this.finished) {
+      this.waveBreak -= dt;
+      if (this.waveBreak <= 0) this._spawnWave();
+    }
+
     if (this.player.alive) this._updatePlayer(dt);
-    if (this.enemy.alive) this._updateAi(dt);
+    if (this.enemy.alive) {
+      if (this.enemy.dropping) this._updateDrop(this.enemy, dt);
+      else this._updateAi(dt);
+    }
 
     for (const f of [this.player, this.enemy]) {
       this._updateWeapons(f, dt);
@@ -2341,6 +2510,10 @@ export class Arena {
       enemyMaxHp: this.enemy.maxHp,
       distance,
       time: this.time,
+      survival: this.survival,
+      wave: this.wave,
+      wavesCleared: this.wavesCleared,
+      waveBreak: this.waveBreak > 0,
       ammoRight: ammoText(rw),
       ammoLeft: ammoText(lw),
       ammoRightEmpty: rw.usesAmmo && rw.ammo === 0,
@@ -2385,7 +2558,11 @@ export class Arena {
           hpLeft: Math.max(0, Math.round(this.player.hp)),
           hpMax: this.player.maxHp,
           enemy: this.enemy.name,
-          opponentId: this.enemy.presetId
+          opponentId: this.enemy.presetId,
+          survival: this.survival,
+          wave: this.wave,
+          wavesCleared: this.wavesCleared,
+          survived: this.survival ? this.time : MATCH_TIME - this.time
         });
       }
     }

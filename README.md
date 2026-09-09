@@ -134,6 +134,39 @@ holding:
   seconds, and the pull is applied outside the steering controller so walking
   the other way does not shrug it off.
 
+## Game modes
+
+Two ways to deploy, chosen under MISSION in the garage. Both use the same
+build, battlefield and difficulty pickers.
+
+**Campaign** is one contract against the opponent you pick, on a three-minute
+clock. Wins advance the ladder below.
+
+**Survival** is endless. You start on wave 1 against the Trainer Mk-I, and every
+frame you put down calls in the next one, which drops into the arena from orbit
+under braking thrust rather than appearing. There is no clock to beat: the
+timer counts your run up, and it ends only when your own frame does. Between
+waves you get a field repair worth 15% of your maximum armour, a full
+generator and every magazine topped up.
+
+The first ten waves walk the roster in threat order. After that it laps again
+with the same frames reinforced and better piloted, so each lap opens with a
+breather and ends harder than the last one did:
+
+| Wave | Opponent | Armour |
+| --- | --- | --- |
+| 1 | Trainer Mk-I | 1535 |
+| 10 | Sovereign | 2616 |
+| 11 | Elite Trainer Mk-I | 2226 |
+| 20 | Elite Sovereign | 3794 |
+| 21 | Prime Trainer Mk-I | 2917 |
+| 31 | Apex Trainer Mk-I | 3607 |
+
+Your best wave count is kept per difficulty, since a run on Cadet is not the
+same achievement as one on Ace, and it shows next to the mode picker. Survival
+does not advance the ladder or release parts: the campaign owns progression, so
+a survival run can never skip it.
+
 ## The ladder
 
 You start with 12 parts and one opponent. Every frame you put down releases a
@@ -243,7 +276,7 @@ src/
   effects.js          Pooled particles, shockwaves, flashes and dynamic lights
   input.js            Keyboard, mouse and pointer-lock handling
   hud.js              Combat HUD bindings
-  progress.js         Unlock ladder derived from the opponents you have beaten
+  progress.js         Unlock ladder and survival records, from what you have beaten
   audio.js            Procedural Web Audio sound effects
   data/parts.js       Part catalogue, stat derivation, enemy presets
   style.css           All styling
@@ -270,6 +303,10 @@ src/
   into the chase camera's own frame.
 - Arenas are built on first use and cached, each with its own effects pool and
   camera rig, so switching battlefields between matches is instant.
+- Survival swaps the opponent in place rather than restarting the match: the
+  old frame's mech, funnels, beams and tethers are disposed, the relief frame is
+  built and dropped from 78 m onto a sampled landing spot that is 46-72 m out
+  and clear of cover, and its AI stays offline until its feet are down.
 - Touch controls drive the same key and mouse state the keyboard and mouse
   would, so the simulation contains no touch-specific branches. Pointer lock is
   the desktop look gate; on touch the look pad stands in for it.

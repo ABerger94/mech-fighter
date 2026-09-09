@@ -13,7 +13,7 @@ import { Hud } from './hud.js';
 import { Garage } from './garage.js';
 import { Arena } from './arena.js';
 import { audio } from './audio.js';
-import { recordVictory } from './progress.js';
+import { recordVictory, recordSurvival } from './progress.js';
 
 const MOVE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD'];
 
@@ -193,20 +193,45 @@ class Game {
     const sub = document.getElementById('result-sub');
     const stats = document.getElementById('result-stats');
 
-    title.textContent = result.win ? 'MISSION COMPLETE' : 'FRAME DESTROYED';
-    title.classList.toggle('is-loss', !result.win);
-    sub.textContent = result.win
-      ? `${result.enemy} neutralised with ${result.hpLeft} armour left.`
-      : `${result.reason}. ${result.enemy} still stands.`;
+    // A survival run has no winning state: it ends when the frame does, and the
+    // score is how far down the roster it got.
+    let survivalRun = null;
+    if (result.survival) {
+      survivalRun = recordSurvival(this.garage.progress, this.lastSettings.difficulty, result.wavesCleared);
+      this.garage.applyProgress(survivalRun.progress);
+    }
 
-    const rows = [
-      ['RESULT', result.win ? 'VICTORY' : 'DEFEAT'],
-      ['ARMOUR LEFT', `${result.hpLeft} / ${result.hpMax}`],
-      ['DAMAGE DEALT', String(result.damageDealt)],
-      ['DAMAGE TAKEN', String(result.damageTaken)],
-      ['ACCURACY', `${Math.round(result.accuracy * 100)}%`],
-      ['TIME LEFT', formatTime(result.timeLeft)]
-    ];
+    const cleared = result.wavesCleared;
+    title.textContent = result.survival ? 'RUN OVER' : result.win ? 'MISSION COMPLETE' : 'FRAME DESTROYED';
+    title.classList.toggle('is-loss', result.survival ? cleared === 0 : !result.win);
+    if (result.survival) {
+      sub.textContent = cleared === 0
+        ? `${result.enemy} put you down on the first wave.`
+        : `${cleared} ${cleared === 1 ? 'frame' : 'frames'} downed. ${result.enemy} ended the run on wave ${result.wave}.`;
+    } else {
+      sub.textContent = result.win
+        ? `${result.enemy} neutralised with ${result.hpLeft} armour left.`
+        : `${result.reason}. ${result.enemy} still stands.`;
+    }
+
+    const rows = result.survival
+      ? [
+          ['FRAMES DOWNED', String(cleared)],
+          ['REACHED WAVE', String(result.wave)],
+          ['PERSONAL BEST', survivalRun.record ? `${survivalRun.best} - NEW` : String(survivalRun.best)],
+          ['DAMAGE DEALT', String(result.damageDealt)],
+          ['DAMAGE TAKEN', String(result.damageTaken)],
+          ['ACCURACY', `${Math.round(result.accuracy * 100)}%`],
+          ['TIME SURVIVED', formatTime(result.survived)]
+        ]
+      : [
+          ['RESULT', result.win ? 'VICTORY' : 'DEFEAT'],
+          ['ARMOUR LEFT', `${result.hpLeft} / ${result.hpMax}`],
+          ['DAMAGE DEALT', String(result.damageDealt)],
+          ['DAMAGE TAKEN', String(result.damageTaken)],
+          ['ACCURACY', `${Math.round(result.accuracy * 100)}%`],
+          ['TIME LEFT', formatTime(result.timeLeft)]
+        ];
     stats.innerHTML = '';
     for (const [label, value] of rows) {
       const div = document.createElement('div');
@@ -221,7 +246,19 @@ class Game {
     // A win advances the ladder and releases the next slice of the catalogue.
     const unlocks = document.getElementById('result-unlocks');
     unlocks.innerHTML = '';
-    if (result.win && result.opponentId) {
+    if (result.survival) {
+      if (survivalRun.record && cleared > 0) {
+        const title2 = document.createElement('h3');
+        title2.textContent = 'NEW RECORD';
+        const list = document.createElement('div');
+        list.className = 'unlock-list';
+        const el = document.createElement('span');
+        el.className = 'is-major';
+        el.textContent = `${cleared} ${cleared === 1 ? 'WAVE' : 'WAVES'} CLEARED`;
+        list.appendChild(el);
+        unlocks.append(title2, list);
+      }
+    } else if (result.win && result.opponentId) {
       const earned = recordVictory(this.garage.progress, result.opponentId);
       if (!earned.repeat) {
         this.garage.applyProgress(earned.progress);
@@ -247,7 +284,8 @@ class Game {
       }
     }
 
-    if (result.win) audio.victory();
+    const won = result.survival ? cleared > 0 : result.win;
+    if (won) audio.victory();
     else audio.defeat();
 
     this.setState(STATES.RESULT);
