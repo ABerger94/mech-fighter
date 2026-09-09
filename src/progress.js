@@ -7,36 +7,75 @@
  * changing the unlock tables reshapes an existing save correctly.
  */
 
-import { ENEMY_PRESETS, STARTER_PARTS, ARENA_UNLOCKS, SLOT_ORDER, CATALOG } from './data/parts.js';
+import { ENEMY_PRESETS, STARTER_PARTS, ARENA_UNLOCKS, SLOT_ORDER, CATALOG, DIFFICULTIES } from './data/parts.js';
 
 const STORAGE_KEY = 'mechfighter.progress.v1';
 
-/** @returns {{defeated: string[]}} */
+/** @returns {{defeated: string[], survival: Object<string, number>}} */
+const emptyProgress = () => ({ defeated: [], survival: {} });
+
+/** Keep only sane, finite wave counts, keyed by a difficulty that still exists. */
+function cleanSurvival(raw) {
+  const out = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const diff of DIFFICULTIES) {
+    const v = Math.floor(raw[diff.id]);
+    if (Number.isFinite(v) && v > 0) out[diff.id] = v;
+  }
+  return out;
+}
+
 export function loadProgress() {
-  const empty = { defeated: [] };
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return empty;
+    if (!raw) return emptyProgress();
     const saved = JSON.parse(raw);
     const known = ENEMY_PRESETS.map((e) => e.id);
-    return { defeated: (saved.defeated || []).filter((id) => known.includes(id)) };
+    return {
+      defeated: (saved.defeated || []).filter((id) => known.includes(id)),
+      survival: cleanSurvival(saved.survival)
+    };
   } catch (err) {
-    return empty;
+    return emptyProgress();
   }
 }
 
 export function saveProgress(progress) {
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ defeated: progress.defeated }));
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ defeated: progress.defeated, survival: progress.survival || {} })
+    );
   } catch (err) {
     /* storage unavailable (private mode) - progress simply is not kept */
   }
 }
 
 export function resetProgress() {
-  const fresh = { defeated: [] };
+  const fresh = emptyProgress();
   saveProgress(fresh);
   return fresh;
+}
+
+/**
+ * Record a survival run. Best wave count is tracked per difficulty, since a
+ * run on Cadet is not the same achievement as one on Ace.
+ * @returns {{progress: object, best: number, record: boolean}}
+ */
+export function recordSurvival(progress, difficultyId, waves) {
+  const cleared = Math.max(0, Math.floor(waves) || 0);
+  const survival = { ...(progress.survival || {}) };
+  const previous = survival[difficultyId] || 0;
+  const record = cleared > previous;
+  if (record) survival[difficultyId] = cleared;
+  const next = { ...progress, survival };
+  if (record) saveProgress(next);
+  return { progress: next, best: Math.max(previous, cleared), record };
+}
+
+/** Best wave count on a difficulty, or 0 if it has never been run. */
+export function survivalBest(progress, difficultyId) {
+  return (progress.survival || {})[difficultyId] || 0;
 }
 
 /** Every part id available at this point in the ladder. */
@@ -101,7 +140,7 @@ export function recordVictory(progress, opponentId) {
   }
 
   const before = { parts: unlockedParts(progress), arenas: unlockedArenas(progress) };
-  const next = { defeated: [...progress.defeated, opponentId] };
+  const next = { ...progress, defeated: [...progress.defeated, opponentId] };
   saveProgress(next);
 
   const parts = [];

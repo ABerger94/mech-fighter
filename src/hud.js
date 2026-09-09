@@ -25,6 +25,9 @@ export class Hud {
     this.ammoL = $('hud-ammo-l');
     this.distance = $('hud-distance');
     this.timer = $('hud-timer');
+    this.wave = $('hud-wave');
+    this.waveN = $('hud-wave-n');
+    this.waveCleared = $('hud-wave-cleared');
     this.crosshair = $('crosshair');
     this.hitmarker = $('hitmarker');
     this.damageArrows = $('damage-arrows');
@@ -82,7 +85,16 @@ export class Hud {
     const mm = Math.floor(Math.max(0, s.time) / 60);
     const ss = Math.floor(Math.max(0, s.time) % 60);
     this.timer.textContent = `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
-    this.timer.classList.toggle('is-urgent', s.time < 30);
+    // survival counts up, so there is no clock to run down and go red over
+    this.timer.classList.toggle('is-urgent', !s.survival && s.time < 30);
+
+    this.wave.hidden = !s.survival;
+    this.root.classList.toggle('is-survival', !!s.survival);
+    if (s.survival) {
+      this.waveN.textContent = `WAVE ${s.wave}`;
+      this.waveCleared.textContent = s.wavesCleared === 1 ? '1 FRAME DOWN' : `${s.wavesCleared} FRAMES DOWN`;
+      this.wave.classList.toggle('is-break', !!s.waveBreak);
+    }
 
     const charging = s.charge > 0.001;
     this.chargeWrap.classList.toggle('is-on', charging);
@@ -178,6 +190,9 @@ export class Hud {
   }
 
   reset() {
+    this.wave.hidden = true;
+    this.wave.classList.remove('is-break');
+    this.root.classList.remove('is-survival');
     this.hitmarker.classList.remove('is-hit', 'is-kill');
     for (const a of this._arrows) a.el.classList.remove('is-on');
     this.killfeed.innerHTML = '';

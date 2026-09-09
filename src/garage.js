@@ -36,10 +36,21 @@ import {
   unlockSource,
   opponentGate,
   arenaGate,
-  ladderStatus
+  ladderStatus,
+  survivalBest
 } from './progress.js';
 
 const STORAGE_KEY = 'mechfighter.build.v2';
+
+/** The two ways to deploy. Survival keeps its own record and its own roster. */
+const MODES = [
+  { id: 'campaign', label: 'CAMPAIGN', blurb: 'One contract against the opponent you pick. Wins advance the ladder.' },
+  {
+    id: 'survival',
+    label: 'SURVIVAL',
+    blurb: 'Endless waves. Every frame you down calls in the next one; the run ends when yours does.'
+  }
+];
 
 export class Garage {
   /**
@@ -64,6 +75,7 @@ export class Garage {
     this.difficulty = this.loadout.difficulty || 'veteran';
     this.arena = this.loadout.arena || 'orbital';
     this.opponent = this.loadout.opponent || 'nemesis';
+    this.mode = this.loadout.mode === 'survival' ? 'survival' : 'campaign';
     this.activeSlot = 'torso';
     this.mech = null;
     this.time = 0;
@@ -99,6 +111,7 @@ export class Garage {
       if (out.arena !== 'random' && !ARENAS.some((a) => a.id === out.arena)) out.arena = 'orbital';
       if (out.opponent !== 'random' && !ENEMY_PRESETS.some((e) => e.id === out.opponent)) out.opponent = 'nemesis';
       if (!DIFFICULTIES.some((d) => d.id === out.difficulty)) out.difficulty = 'veteran';
+      if (out.mode !== 'survival') out.mode = 'campaign';
       return out;
     } catch (err) {
       return base;
@@ -109,7 +122,13 @@ export class Garage {
     try {
       window.localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ ...this.loadout, difficulty: this.difficulty, arena: this.arena, opponent: this.opponent })
+        JSON.stringify({
+          ...this.loadout,
+          mode: this.mode,
+          difficulty: this.difficulty,
+          arena: this.arena,
+          opponent: this.opponent
+        })
       );
     } catch (err) {
       /* storage unavailable (private mode) - the build simply is not persisted */
@@ -135,6 +154,7 @@ export class Garage {
       return list.length ? list[Math.floor(Math.random() * list.length)] : fallback;
     };
     return {
+      mode: this.mode,
       difficulty: this.difficulty,
       arena: this.arena === 'random' ? pick(this.unlockedArenas, 'orbital') : this.arena,
       opponent: this.opponent === 'random' ? pick(this.unlockedOpponents, ENEMY_PRESETS[0].id) : this.opponent
@@ -239,6 +259,8 @@ export class Garage {
       mobileBar: $('mobile-bar'),
       leftPanel: document.querySelector('.panel--left'),
       rightPanel: document.querySelector('.panel--right'),
+      modeSeg: $('mode-seg'),
+      modeNote: $('mode-note'),
       arenaSeg: $('arena-seg'),
       arenaNote: $('arena-note'),
       opponentList: $('opponent-list'),
@@ -383,6 +405,23 @@ export class Garage {
   }
 
   _buildDeploymentUi() {
+    // mission mode
+    this.dom.modeSeg.innerHTML = '';
+    this.modeButtons = [];
+    for (const opt of MODES) {
+      const b = document.createElement('button');
+      b.textContent = opt.label;
+      b.dataset.id = opt.id;
+      b.addEventListener('click', () => {
+        audio.uiClick();
+        this.mode = opt.id;
+        this._syncDeployment();
+        this.save();
+      });
+      this.dom.modeSeg.appendChild(b);
+      this.modeButtons.push({ button: b, blurb: opt.blurb });
+    }
+
     // battlefield picker
     this.dom.arenaSeg.innerHTML = '';
     this.arenaButtons = [];
@@ -470,6 +509,20 @@ export class Garage {
   }
 
   _syncDeployment() {
+    const survival = this.mode === 'survival';
+    for (const { button, blurb } of this.modeButtons) {
+      const active = button.dataset.id === this.mode;
+      button.classList.toggle('is-active', active);
+      if (active) {
+        const best = survivalBest(this.progress, this.difficulty);
+        const label = DIFFICULTIES.find((d) => d.id === this.difficulty);
+        this.dom.modeNote.textContent = survival && best > 0
+          ? `${blurb} Best on ${label ? label.label : this.difficulty}: ${best} ${best === 1 ? 'wave' : 'waves'}.`
+          : blurb;
+      }
+    }
+    this.dom.opponentList.classList.toggle('is-disabled', survival);
+
     for (const { button, blurb } of this.arenaButtons) {
       const id = button.dataset.id;
       const locked = id !== 'random' && !this.unlockedArenas.has(id);
@@ -481,8 +534,8 @@ export class Garage {
     for (const b of this.opponentButtons) {
       const id = b.dataset.id;
       const locked = id !== 'random' && !this.unlockedOpponents.has(id);
-      b.classList.toggle('is-locked', locked);
-      b.classList.toggle('is-active', id === this.opponent && !locked);
+      b.classList.toggle('is-locked', locked && !survival);
+      b.classList.toggle('is-active', !survival && id === this.opponent && !locked);
       const beaten = this.progress.defeated.includes(id);
       const mark = b.querySelector('.opponent-name');
       if (mark) mark.textContent = beaten ? `${mark.dataset.name} \u2713` : mark.dataset.name;
@@ -512,6 +565,8 @@ export class Garage {
     for (const b of this.diffButtons) {
       b.classList.toggle('is-active', b.dataset.id === this.difficulty);
     }
+    // the survival record is per difficulty, so the note follows this picker
+    if (this.modeButtons) this._syncDeployment();
   }
 
   _bindActions() {

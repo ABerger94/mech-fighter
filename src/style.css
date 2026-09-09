@@ -436,6 +436,18 @@ body.is-touch .desktop-only { display: none !important; }
 }
 .hud-timer.is-urgent { color: var(--red); text-shadow: 0 0 16px rgba(255, 77, 94, 0.6); }
 
+.opponent-list.is-disabled { opacity: 0.4; }
+.opponent-list.is-disabled .opponent { pointer-events: none; }
+
+.hud-wave {
+  position: absolute; left: 50%; top: 52px; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  font-family: var(--mono); letter-spacing: 0.14em; pointer-events: none;
+}
+.hud-wave b { font-size: 15px; color: var(--amber); text-shadow: 0 0 10px rgba(255, 179, 71, 0.5); }
+.hud-wave span { font-size: 10px; color: var(--text-dim); letter-spacing: 0.2em; }
+.hud-wave.is-break b { color: var(--cyan); text-shadow: 0 0 12px rgba(77, 225, 255, 0.6); }
+
 .crosshair { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; transform: translate(-50%, -50%); opacity: 0.9; }
 .crosshair-ring {
   position: absolute; inset: 0; border: 1px solid rgba(77, 225, 255, 0.5); border-radius: 50%;
@@ -701,6 +713,11 @@ body.is-touch .killfeed div {
 body.is-touch .killfeed div.warn { border-left-color: var(--amber); }
 body.is-touch .killfeed div.bad { border-left-color: var(--red); }
 body.is-touch .hud-boost { bottom: auto; top: 72px; }
+body.is-touch .hud-wave { top: calc(env(safe-area-inset-top, 0px) + 32px); }
+body.is-touch .hud-wave b { font-size: 12px; }
+body.is-touch .hud-wave span { font-size: 8.5px; }
+body.is-touch .screen--hud.is-survival .hud-boost { top: 96px; }
+body.is-touch .screen--hud.is-survival .killfeed { top: 110px; }
 
 /* ---------------------------------------------------------------------- */
 /*  Rotate-to-landscape notice                                            */

@@ -1056,6 +1056,34 @@ export const ENEMY_PRESETS = [
   }
 ];
 
+/** Rank prefixes for repeat laps of the survival roster. */
+const SURVIVAL_RANKS = ['ELITE', 'PRIME', 'APEX'];
+
+/**
+ * Survival waves. The first lap walks the roster in threat order; after that it
+ * laps again with reinforced armour and sharper piloting, so each lap opens
+ * with a breather and ends harder than the last one did.
+ */
+export function survivalWave(wave) {
+  const ordered = [...ENEMY_PRESETS].sort((a, b) => a.threat - b.threat);
+  const n = Math.max(1, Math.floor(wave));
+  const lap = Math.floor((n - 1) / ordered.length);
+  const base = ordered[(n - 1) % ordered.length];
+  if (lap === 0) return { ...base, wave: n, lap: 0 };
+  const rank = lap <= SURVIVAL_RANKS.length ? SURVIVAL_RANKS[lap - 1] : `APEX ${lap - SURVIVAL_RANKS.length + 1}`;
+  return {
+    ...base,
+    name: `${rank} ${base.name}`,
+    wave: n,
+    lap,
+    hpMult: (base.hpMult || 1) * (1 + lap * ordered.length * 0.045),
+    skill: Math.min(1.15, base.skill + lap * 0.12)
+  };
+}
+
+/** How many waves make up one lap of the roster. */
+export const SURVIVAL_LAP = ENEMY_PRESETS.length;
+
 export const DIFFICULTIES = [
   { id: 'cadet', label: 'CADET', damageTaken: 0.55, aiSpeed: 0.72 },
   { id: 'veteran', label: 'VETERAN', damageTaken: 0.85, aiSpeed: 0.95 },
