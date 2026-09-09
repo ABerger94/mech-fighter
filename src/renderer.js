@@ -416,6 +416,7 @@ export const ARENAS = [
       bounce: [0x5f9dff, 1.25, [-70, 55, -80]],
       rim: [0xffb673, 0.85, [-40, 30, 90]]
     },
+    cover: { pillar: 0x39506a, block: 0x40566e, trim: 0xffab4d, trimGlow: 1.6, metalness: 0.4, roughness: 0.6, flat: false },
     decor: 'drones',
     props: orbitalProps
   },
@@ -434,6 +435,7 @@ export const ARENAS = [
       bounce: [0xd88f4a, 0.9, [-80, 40, 70]],
       rim: [0x7fb0ff, 0.5, [-30, 60, -90]]
     },
+    cover: { pillar: 0x9d7448, block: 0xb08a5c, trim: 0xffd08a, trimGlow: 0.6, metalness: 0.05, roughness: 0.95, flat: true },
     decor: 'dust',
     props: canyonProps
   },
@@ -452,8 +454,28 @@ export const ARENAS = [
       bounce: [0xff7ad8, 1.5, [70, 40, -60]],
       rim: [0x6ee8ff, 1.3, [-70, 35, -70]]
     },
+    cover: { pillar: 0x483a70, block: 0x53437f, trim: 0xff4dd2, trimGlow: 1.6, metalness: 0.35, roughness: 0.72, flat: false },
     decor: 'signs',
     props: cityProps
+  },
+  {
+    id: 'foundry',
+    name: 'SLAG FOUNDRY',
+    blurb: 'Orbital smelting works. Smelter drums, gantry walls, and a floor that glows.',
+    sky: [0x3d1a0d, 0x7a2b10, 0x120703],
+    fog: { color: 0x3a1a0e, near: 85, far: 280 },
+    deck: { color: 0x5a3a28, grid: [0xd4682c, 0x7a3316], gridOpacity: 0.5, strips: 0xff9a4a },
+    wall: { color: 0x5e3624, trim: 0xffa04d, height: 30 },
+    tower: { color: 0x4a2a1c, beacon: 0xffd166 },
+    light: {
+      hemi: [0xffc79a, 0x40200e, 1.9], ambient: [0xffb27a, 0.8],
+      sun: [0xffe0c0, 2.5, [-50, 90, -70]],
+      bounce: [0xff6f2a, 1.9, [40, 14, 60]],
+      rim: [0x8fc0ff, 0.9, [80, 45, -40]]
+    },
+    cover: { pillar: 0x7a4a30, block: 0x8a5a3c, trim: 0xff8a2e, trimGlow: 2.4, metalness: 0.5, roughness: 0.6, flat: false },
+    decor: 'embers',
+    props: foundryProps
   }
 ];
 
@@ -502,6 +524,31 @@ function canyonProps() {
     [0, 0, 7, 7, 3.4], [-60, 26, 6, 9, 12], [60, -26, 6, 9, 12]
   ];
   for (const [x, z, hx, hz, h] of slabs) props.push({ kind: 'box', x, z, hx, hz, h, style: 'mesa' });
+  return props;
+}
+
+/**
+ * Slag foundry: a ring of smelter drums with a heavy gantry wall bisecting the
+ * floor, so half the arena is a shooting gallery and the other half is a maze.
+ */
+function foundryProps() {
+  const props = [];
+  // smelter drums around the rim
+  const drums = [
+    [-44, -20, 7.0, 20], [44, 20, 7.0, 20], [-20, 44, 6.2, 24], [20, -44, 6.2, 24],
+    [-50, 34, 5.4, 16], [50, -34, 5.4, 16], [0, -58, 8.0, 27], [0, 58, 8.0, 27]
+  ];
+  for (const [x, z, r, h] of drums) props.push({ kind: 'cyl', x, z, r, h, style: 'pillar' });
+
+  // two gantry walls with a gap you have to commit to crossing
+  for (const sign of [-1, 1]) {
+    for (const off of [-30, -12, 12, 30]) {
+      props.push({ kind: 'box', x: off, z: sign * 26, hx: 7, hz: 2.4, h: 11, style: 'gantry' });
+    }
+  }
+  // casting moulds: low cover in the open middle
+  const moulds = [[-16, 0], [16, 0], [0, -12], [0, 12]];
+  for (const [x, z] of moulds) props.push({ kind: 'box', x, z, hx: 4.2, hz: 4.2, h: 3.6, style: 'gantry' });
   return props;
 }
 
@@ -620,19 +667,14 @@ export function createArenaEnvironment(arenaId = 'orbital') {
   }
 
   // ------------------------------------------------ cover
+  const cv = def.cover;
   const pillarMat = new THREE.MeshStandardMaterial({
-    color: def.id === 'canyon' ? 0x9d7448 : def.id === 'city' ? 0x483a70 : 0x39506a,
-    metalness: def.id === 'canyon' ? 0.05 : 0.4,
-    roughness: def.id === 'canyon' ? 0.95 : 0.6,
-    flatShading: def.id === 'canyon'
+    color: cv.pillar, metalness: cv.metalness, roughness: cv.roughness, flatShading: cv.flat
   });
   const blockMat = new THREE.MeshStandardMaterial({
-    color: def.id === 'canyon' ? 0xb08a5c : def.id === 'city' ? 0x53437f : 0x40566e,
-    metalness: def.id === 'canyon' ? 0.05 : 0.35,
-    roughness: def.id === 'canyon' ? 0.95 : 0.72,
-    flatShading: def.id === 'canyon'
+    color: cv.block, metalness: cv.metalness, roughness: cv.roughness, flatShading: cv.flat
   });
-  const trimMat = neonMat(def.id === 'city' ? 0xff4dd2 : def.id === 'canyon' ? 0xffd08a : 0xffab4d, def.id === 'canyon' ? 0.6 : 1.6);
+  const trimMat = neonMat(cv.trim, cv.trimGlow);
   const trimMat2 = neonMat(def.id === 'city' ? 0x4de1ff : def.wall.trim, 1.8);
 
   for (const p of def.props()) {
@@ -710,6 +752,18 @@ export function createArenaEnvironment(arenaId = 'orbital') {
       d.position.set((Math.random() - 0.5) * 150, 3 + Math.random() * 26, (Math.random() - 0.5) * 150);
       scene.add(d);
       movers.push({ mesh: d, phase: Math.random() * 6.3, radius: 30 + Math.random() * 40, y: d.position.y, speed: 0.05 + Math.random() * 0.06, spin: 0.2, billboard: true });
+    }
+  } else if (def.decor === 'embers') {
+    // sparks rising off the pour floor
+    const emberMat = neonMat(0xff9a3d, 2.8);
+    for (let i = 0; i < 30; i++) {
+      const d = new THREE.Mesh(new THREE.SphereGeometry(0.28, 6, 5), emberMat);
+      d.position.set((Math.random() - 0.5) * 150, 2 + Math.random() * 30, (Math.random() - 0.5) * 150);
+      scene.add(d);
+      movers.push({
+        mesh: d, phase: Math.random() * 6.3, radius: 12 + Math.random() * 26,
+        y: d.position.y, speed: 0.08 + Math.random() * 0.12, spin: 0.8
+      });
     }
   } else {
     // hovering holo-signs drifting between the towers

@@ -71,6 +71,24 @@ export const HEADS = [
     geo: { width: 0.66, height: 0.54, depth: 0.9, crest: 'scope', visor: 'mono' }
   },
   {
+    id: 'head_oracle',
+    name: 'ORACLE ECM',
+    class: 'ELECTRONIC',
+    desc: 'Jamming array. Enemy fire control never fully settles, and you see everything.',
+    weight: 135, armor: 70, energyCap: 25, energyRegen: 6,
+    lockSpeed: 1.3, scanRange: 200, stealth: 0.35,
+    geo: { width: 0.68, height: 0.56, depth: 0.76, crest: 'array', visor: 'wide' }
+  },
+  {
+    id: 'head_warlord',
+    name: 'WARLORD CROWN',
+    class: 'ASSAULT',
+    desc: 'Ceremonial command head over siege plating. Built to lead a charge.',
+    weight: 175, armor: 200, energyCap: 10, energyRegen: 2,
+    lockSpeed: 0.95, scanRange: 105, meleeBonus: 0.12,
+    geo: { width: 0.9, height: 0.68, depth: 0.82, crest: 'horns', visor: 'twin' }
+  },
+  {
     id: 'head_gunner',
     name: 'GUNNER TWIN-EYE',
     class: 'SUPPORT',
@@ -123,6 +141,23 @@ export const TORSOS = [
     desc: 'Absurd slab of armour with a reactor as an afterthought. Barely moves.',
     weight: 1080, armor: 1320, energyCap: 120, energyRegen: 16, damageResist: 0.18,
     geo: { width: 2.35, height: 2.2, depth: 1.6, shoulders: 1.62, vents: 2 }
+  },
+  {
+    id: 'torso_citadel',
+    name: 'CITADEL FRAME',
+    class: 'BULWARK',
+    desc: 'Interlocking ablative shell. Shrugs off hits that would gut anything else.',
+    weight: 880, armor: 940, energyCap: 140, energyRegen: 19, damageResist: 0.22,
+    geo: { width: 2.15, height: 2.08, depth: 1.5, shoulders: 1.5, vents: 2 }
+  },
+  {
+    id: 'torso_revenant',
+    name: 'REVENANT FRAME',
+    class: 'STEALTH',
+    desc: 'Ghost frame with a runaway core. Thin, quiet, and never out of power.',
+    weight: 400, armor: 380, energyCap: 265, energyRegen: 41, damageResist: 0.02,
+    stealth: 0.4, meleeBonus: 0.1,
+    geo: { width: 1.56, height: 1.92, depth: 1.06, shoulders: 1.02, vents: 4, faceted: true }
   },
   {
     id: 'torso_phantom',
@@ -181,6 +216,24 @@ export const ARMS = [
     weight: 480, armor: 430, energyCap: 0, energyRegen: 0,
     spreadMult: 1.15, meleeMult: 1.1, reloadMult: 1.1, damageResist: 0.05,
     geo: { thickness: 0.58, length: 1.9, shoulderPad: 0.86, guard: true }
+  },
+  {
+    id: 'arms_ronin',
+    name: 'RONIN ARMS',
+    class: 'HYBRID',
+    desc: 'Duellist wrists that still hold a rifle straight. No specialism, no weakness.',
+    weight: 315, armor: 240, energyCap: 10, energyRegen: 2,
+    spreadMult: 0.82, meleeMult: 1.25, reloadMult: 0.88,
+    geo: { thickness: 0.48, length: 1.9, shoulderPad: 0.6 }
+  },
+  {
+    id: 'arms_siege',
+    name: 'SIEGE ARMS',
+    class: 'SIEGE',
+    desc: 'Loader arms off a demolition rig. Enormous plating, glacial reloads.',
+    weight: 540, armor: 480, energyCap: 0, energyRegen: 0,
+    spreadMult: 1.3, meleeMult: 1.6, reloadMult: 1.45, damageResist: 0.07,
+    geo: { thickness: 0.66, length: 2.0, shoulderPad: 0.9, guard: true }
   },
   {
     id: 'arms_duelist',
@@ -252,6 +305,16 @@ export const LEGS = [
     geo: { style: 'tread', height: 1.9, thickness: 0.9, footWidth: 1.7 }
   },
   {
+    id: 'legs_tripod',
+    name: 'TRIPOD SIEGE',
+    class: 'THREE-LEGGED',
+    desc: 'Three braced limbs around a turret ring. Immovable, and slow to prove it.',
+    weight: 1010, armor: 810, energyCap: 5, energyRegen: 2,
+    load: 4250, walkSpeed: 13.0, boostMult: 0.8, jumpMult: 0.78, turnRate: 3.4,
+    recoilDamp: 0.6,
+    geo: { style: 'tripod', height: 2.45, thickness: 0.62, footWidth: 1.0 }
+  },
+  {
     id: 'legs_hover',
     name: 'GLIDE HOVER',
     class: 'HOVER',
@@ -321,6 +384,25 @@ export const BACKPACKS = [
     weight: 520, armor: 180, energyCap: 55, energyRegen: 2,
     boostBonus: 0.72, thrustEfficiency: 1.5,
     geo: { style: 'overdrive' }
+  },
+  {
+    id: 'back_sentry',
+    name: 'SENTRY DEPLOYER',
+    class: 'REMOTE',
+    desc: 'Two autonomous gun platforms. Plant them with [F]; they hold the ground you leave.',
+    weight: 385, armor: 160, energyCap: 20, energyRegen: 3,
+    boostBonus: 0.0, thrustEfficiency: 1.05,
+    funnels: { count: 2, weapon: 'wp_sentry_gun', radius: 9, drain: 3, stationary: true },
+    geo: { style: 'sentry' }
+  },
+  {
+    id: 'back_bulwark',
+    name: 'BULWARK PLATING',
+    class: 'ARMOUR',
+    desc: 'Slabs of reactive plate bolted over the core. No thrust, no tricks, no give.',
+    weight: 610, armor: 520, energyCap: 0, energyRegen: 0,
+    boostBonus: -0.12, thrustEfficiency: 1.35, damageResist: 0.1,
+    geo: { style: 'plating' }
   },
   {
     id: 'back_medic',
@@ -526,6 +608,34 @@ export const WEAPONS = [
     geo: { style: 'sprayer', length: 2.1, bulk: 0.46 }
   },
   {
+    id: 'wp_emp_projector',
+    name: 'VESPER EMP PROJECTOR',
+    class: 'SUPPORT',
+    kind: 'beam',
+    desc: 'Low-yield capacitor bolts that boil the target generator dry. Strip the energy, strip the escape.',
+    slots: ['right', 'left'],
+    weight: 300, armor: 24,
+    damage: 20, rpm: 96, pellets: 1, speed: 165, spread: 1.6,
+    mag: 0, reload: 0, energy: 16, range: 150,
+    energyDrain: 38, blast: 4.0,
+    tracer: { color: 0xc07dff, radius: 0.17, length: 3.4, glow: 2.0 },
+    geo: { style: 'rifle', length: 2.7, bulk: 0.4 }
+  },
+  {
+    id: 'wp_flak',
+    name: 'CITADEL FLAK BATTERY',
+    class: 'BALLISTIC',
+    kind: 'ballistic',
+    desc: 'Proximity-fuzed shells that burst near anything airborne. Boosting overhead is no longer safe.',
+    slots: ['right', 'left'],
+    weight: 395, armor: 42,
+    damage: 30, rpm: 132, pellets: 2, speed: 155, spread: 3.4,
+    mag: 24, reload: 2.7, energy: 0, range: 165,
+    proximity: 6.5, blast: 7.0, grav: 6,
+    tracer: { color: 0xffa64d, radius: 0.15, length: 2.4, glow: 1.2 },
+    geo: { style: 'mortar', length: 2.4, bulk: 0.62 }
+  },
+  {
     id: 'wp_plasma_blade',
     name: 'PLASMA EDGE',
     class: 'MELEE',
@@ -580,6 +690,20 @@ export const WEAPONS = [
     arc: 44, lunge: 44,
     tracer: { color: 0x9ecbff, radius: 0.22, length: 5.6, glow: 2.0 },
     geo: { style: 'lance', length: 5.6, bulk: 0.3 }
+  },
+  {
+    id: 'wp_chain_whip',
+    name: 'REVENANT CHAIN WHIP',
+    class: 'MELEE',
+    kind: 'melee',
+    desc: 'A segmented monomolecular lash. Sweeps a full circle and lands every link it touches.',
+    slots: ['left', 'right'],
+    weight: 290, armor: 30,
+    damage: 68, rpm: 48, pellets: 1, speed: 0, spread: 0,
+    mag: 0, reload: 0, energy: 27, range: 21,
+    arc: 170, hits: 4,
+    tracer: { color: 0xff8a3d, radius: 0.14, length: 6.4, glow: 2.2 },
+    geo: { style: 'whip', length: 6.4, bulk: 0.2 }
   },
   {
     id: 'wp_tower_shield',
@@ -652,6 +776,19 @@ export const SHOULDER_WEAPONS = [
     mag: 0, reload: 0, energy: 0, range: 120,
     tracer: { color: 0xa8f0ff, radius: 0.12, length: 3.0, glow: 1.8 },
     geo: { style: 'none', length: 0, bulk: 0 }
+  },
+  {
+    id: 'wp_sentry_gun',
+    name: 'SENTRY GUN',
+    class: 'REMOTE',
+    kind: 'ballistic',
+    desc: 'Deployed autonomous turret.',
+    slots: [],
+    weight: 0, armor: 0,
+    damage: 17, rpm: 168, pellets: 1, speed: 175, spread: 2.2,
+    mag: 0, reload: 0, energy: 0, range: 115,
+    tracer: { color: 0xffd8a0, radius: 0.11, length: 2.2, glow: 1.2 },
+    geo: { style: 'none', length: 0, bulk: 0 }
   }
 ];
 
@@ -666,6 +803,9 @@ export const CATALOG = {
 };
 
 const ALL_PARTS = [...HEADS, ...TORSOS, ...ARMS, ...LEGS, ...BACKPACKS, ...WEAPONS, ...SHOULDER_WEAPONS];
+
+/** Everything the pilot can actually own; backpack ordnance is not selectable. */
+export const TOTAL_PARTS = HEADS.length + TORSOS.length + ARMS.length + LEGS.length + BACKPACKS.length + WEAPONS.length;
 
 /** Look a part up by id across every catalogue. */
 export function getPart(id) {
@@ -732,7 +872,7 @@ export const STARTER_PARTS = [
 ];
 
 /** Battlefields earned by beating the opponent named here. */
-export const ARENA_UNLOCKS = { orbital: null, canyon: 'nemesis', city: 'wraith' };
+export const ARENA_UNLOCKS = { orbital: null, canyon: 'nemesis', city: 'wraith', foundry: 'citadel' };
 
 /**
  * Opponents are not just different loadouts: each carries a behaviour profile
@@ -822,8 +962,82 @@ export const ENEMY_PRESETS = [
     legs: 'legs_strider', backpack: 'back_vesper',
     rightWeapon: 'wp_sniper', leftWeapon: 'wp_twin_saber',
     colors: { primary: '#2b2f38', secondary: '#15181e', accent: '#c9ff3d', frame: '#0a0c10', glow: '#c9ff3d' },
-    unlocks: ['arms_duelist', 'legs_juggernaut', 'back_vesper', 'back_omni', 'back_overdrive', 'wp_sniper', 'wp_lance', 'wp_barrier'],
+    unlocks: ['arms_duelist', 'legs_juggernaut', 'back_vesper', 'back_omni', 'wp_sniper', 'wp_lance'],
     ai: { band: [24, 70], aggression: 0.60, dodge: 0.80, strafe: 0.70, jumpiness: 0.70, discipline: 0.75, flank: 0.50, holdGround: false }
+  },
+  {
+    id: 'vesper',
+    name: 'VESPER TWIN',
+    threat: 7,
+    blurb: 'Jamming interceptor. Boils your generator dry, then dances out of reach.',
+    skill: 0.92,
+    head: 'head_oracle', torso: 'torso_wraith', arms: 'arms_ronin',
+    legs: 'legs_skimmer', backpack: 'back_seraph',
+    rightWeapon: 'wp_emp_projector', leftWeapon: 'wp_pulse_smg',
+    colors: { primary: '#3b2a55', secondary: '#1d1430', accent: '#c07dff', frame: '#0e0a18', glow: '#c07dff' },
+    unlocks: ['head_oracle', 'arms_ronin', 'wp_emp_projector'],
+    ai: { band: [20, 52], aggression: 0.70, dodge: 0.85, strafe: 0.95, jumpiness: 0.75, discipline: 0.65, flank: 0.70, holdGround: false }
+  },
+  {
+    id: 'citadel',
+    name: 'CITADEL BATTERY',
+    threat: 8,
+    blurb: 'Tripod flak platform. Proximity shells make the sky expensive.',
+    skill: 0.94,
+    head: 'head_hawkeye', torso: 'torso_citadel', arms: 'arms_siege',
+    legs: 'legs_tripod', backpack: 'back_sentry',
+    rightWeapon: 'wp_flak', leftWeapon: 'wp_flak',
+    colors: { primary: '#5b5f4a', secondary: '#31342a', accent: '#ffa64d', frame: '#14160f', glow: '#ffc06a' },
+    unlocks: ['torso_citadel', 'arms_siege', 'legs_tripod', 'back_sentry', 'wp_flak'],
+    ai: { band: [22, 55], aggression: 0.30, dodge: 0.15, strafe: 0.30, jumpiness: 0.00, discipline: 0.80, flank: 0.10, holdGround: true }
+  },
+  {
+    id: 'revenant',
+    name: 'REVENANT',
+    threat: 9,
+    blurb: 'Ghost frame on a chain whip. Wound it and the limiters come off.',
+    skill: 0.96,
+    hpMult: 1.3,
+    head: 'head_duel', torso: 'torso_revenant', arms: 'arms_ronin',
+    legs: 'legs_skimmer', backpack: 'back_seraph',
+    rightWeapon: 'wp_chain_whip', leftWeapon: 'wp_sprayer',
+    colors: { primary: '#2a1c1c', secondary: '#150e0e', accent: '#ff8a3d', frame: '#0b0707', glow: '#ff6a2a' },
+    unlocks: ['torso_revenant', 'back_overdrive', 'wp_chain_whip'],
+    ai: { band: [12, 40], aggression: 0.75, dodge: 0.80, strafe: 0.85, jumpiness: 0.70, discipline: 0.60, flank: 0.65, holdGround: false },
+    phases: [
+      {
+        at: 0.5,
+        say: 'REVENANT — LIMITERS RELEASED',
+        ai: { band: [6, 20], aggression: 1.0, dodge: 0.45, strafe: 0.55, jumpiness: 0.95, discipline: 0.25, flank: 0.2 }
+      }
+    ]
+  },
+  {
+    id: 'sovereign',
+    name: 'SOVEREIGN',
+    threat: 10,
+    blurb: 'Three-phase command frame. Beam rifle, then funnels, then the lance.',
+    skill: 1.0,
+    hpMult: 1.75,
+    head: 'head_warlord', torso: 'torso_striker', arms: 'arms_duelist',
+    legs: 'legs_strider', backpack: 'back_vesper',
+    rightWeapon: 'wp_beam_rifle', leftWeapon: 'wp_lance',
+    colors: { primary: '#f0e6d2', secondary: '#8c7a4a', accent: '#d4af37', frame: '#1a1710', glow: '#ffe08a' },
+    unlocks: ['head_warlord', 'back_bulwark', 'wp_barrier'],
+    ai: { band: [46, 88], aggression: 0.25, dodge: 0.65, strafe: 0.45, jumpiness: 0.35, discipline: 0.95, flank: 0.30, holdGround: true },
+    phases: [
+      {
+        at: 0.66,
+        say: 'SOVEREIGN — FUNNELS FREE',
+        funnels: true,
+        ai: { band: [22, 56], aggression: 0.55, dodge: 0.85, strafe: 0.85, jumpiness: 0.70, discipline: 0.70, flank: 0.65, holdGround: false }
+      },
+      {
+        at: 0.33,
+        say: 'SOVEREIGN — LANCE COMMITTED',
+        ai: { band: [8, 24], aggression: 1.0, dodge: 0.60, strafe: 0.50, jumpiness: 0.85, discipline: 0.45, flank: 0.20, holdGround: false }
+      }
+    ]
   }
 ];
 
@@ -889,11 +1103,11 @@ export function computeStats(loadout) {
     thrustEfficiency,
     damageResist,
     spreadMult: p.arms.spreadMult,
-    meleeMult: p.arms.meleeMult * (1 + (p.torso.meleeBonus || 0)),
+    meleeMult: p.arms.meleeMult * (1 + (p.torso.meleeBonus || 0) + (p.head.meleeBonus || 0)),
     reloadMult,
     lockSpeed: p.head.lockSpeed + (p.backpack.lockBonus || 0),
     scanRange: p.head.scanRange + (p.backpack.scanBonus || 0),
-    stealth: p.torso.stealth || 0,
+    stealth: clamp((p.torso.stealth || 0) + (p.head.stealth || 0), 0, 0.75),
     recoilDamp: p.legs.recoilDamp || 0,
     canJump: p.legs.canJump !== false,
     canThrust: p.legs.canThrust !== false,

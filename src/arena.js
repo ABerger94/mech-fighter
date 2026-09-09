@@ -67,6 +67,8 @@ const _fn2 = new THREE.Vector3();
 const _fn3 = new THREE.Vector3();
 const _fn4 = new THREE.Vector3();
 const _fnQ = new THREE.Quaternion();
+const _fnUp = new THREE.Vector3(0, 1, 0);
+const _dmgDir = new THREE.Vector3();
 const _ld1 = new THREE.Vector3();
 const _ld2 = new THREE.Vector3();
 
@@ -212,7 +214,9 @@ class Fighter {
     this.radius = this.mech.radius;
     this.height = this.mech.height;
 
-    this.maxHp = this.stats.maxHp;
+    // Named opponents may carry reinforced armour beyond what their frame
+    // parts alone provide; the player never gets a multiplier.
+    this.maxHp = Math.round(this.stats.maxHp * (isPlayer ? 1 : loadout.hpMult || 1));
     this.hp = this.maxHp;
     this.maxEnergy = this.stats.maxEnergy;
     this.energy = this.maxEnergy;
@@ -306,6 +310,7 @@ export class Arena {
     this.elapsed = 0;
     this._aimPoint = new THREE.Vector3();
     this._locked = false;
+    this._hitMarkTimer = 0;
     this._lockTimer = 0;
     this._screenPos = new THREE.Vector3();
     this._lowHpWarned = false;
@@ -369,6 +374,7 @@ export class Arena {
     this.enemy = new Fighter(preset, false, preset.name);
     this.enemy.skill = preset.skill;
     this.enemy.profile = preset.ai || null;
+    this.enemy.phases = preset.phases || null;
     this.enemy.presetId = preset.id;
 
     this.scene.add(this.player.root, this.enemy.root);
@@ -716,7 +722,9 @@ export class Arena {
       color: part.tracer.color,
       radius: part.tracer.radius * 1.4,
       kind: part.kind,
-      armTime: part.kind === 'missile' ? 0.12 : 0
+      energyDrain: part.energyDrain || 0,
+      proximity: part.proximity || 0,
+      armTime: part.kind === 'missile' ? 0.12 : part.proximity > 0 ? 0.1 : 0
     };
     this.projectiles.push(p);
     return p;
@@ -1047,7 +1055,9 @@ export class Arena {
         dock: f.mech.funnelDocks[i] || f.mech.funnelDocks[0],
         angle: (i / spec.count) * Math.PI * 2,
         height: 3 + (i % 2) * 3.5,
-        cooldown: 0.4 + i * 0.25
+        cooldown: 0.4 + i * 0.25,
+        anchor: spec.stationary ? new THREE.Vector3() : null,
+        planted: false
       });
     }
   }
@@ -1057,8 +1067,29 @@ export class Arena {
     if (!f.funnels) return;
     if (f.funnelsDeployed === deployed) return;
     f.funnelsDeployed = deployed;
+    const spec = f.stats.funnels;
+    if (spec && spec.stationary) {
+      if (deployed) {
+        // plant the turrets on the ground around the frame, spread evenly, and
+        // leave them there - the whole point is holding the ground you vacate
+        f.center(_fn1);
+        const spread = spec.radius;
+        f.funnels.forEach((fn, i) => {
+          const a = f.yaw + Math.PI + ((i + 0.5) / f.funnels.length - 0.5) * 1.9;
+          fn.anchor.set(
+            THREE.MathUtils.clamp(f.pos.x + Math.sin(a) * spread, -this.half + 4, this.half - 4),
+            2.4,
+            THREE.MathUtils.clamp(f.pos.z + Math.cos(a) * spread, -this.half + 4, this.half - 4)
+          );
+          fn.planted = false;
+        });
+      } else {
+        for (const fn of f.funnels) fn.planted = false;
+      }
+    }
     if (f.isPlayer) {
-      this.hud.feed(deployed ? 'FUNNELS DEPLOYED' : 'FUNNELS RECALLED', deployed ? '' : 'warn');
+      const noun = spec && spec.stationary ? 'SENTRIES' : 'FUNNELS';
+      this.hud.feed(deployed ? `${noun} DEPLOYED` : `${noun} RECALLED`, deployed ? '' : 'warn');
       audio.uiConfirm();
     }
   }
@@ -1081,15 +1112,25 @@ export class Arena {
     f.center(_fn1);
     for (const fn of f.funnels) {
       if (f.funnelsDeployed && f.alive) {
-        fn.angle += dt * 1.15;
-        _fn2.set(
-          _fn1.x + Math.cos(fn.angle) * spec.radius,
-          _fn1.y + fn.height + Math.sin(fn.angle * 2) * 0.9,
-          _fn1.z + Math.sin(fn.angle) * spec.radius
-        );
-        fn.mesh.position.lerp(_fn2, 1 - Math.exp(-dt / 0.22));
+        if (spec.stationary) {
+          // travel to the drop point once, then hold station for good
+          const rate = fn.planted ? 0.06 : 0.3;
+          fn.mesh.position.lerp(fn.anchor, 1 - Math.exp(-dt / rate));
+          if (!fn.planted && fn.mesh.position.distanceToSquared(fn.anchor) < 0.09) {
+            fn.planted = true;
+            this.effects.impact(fn.anchor, _fnUp, f.funnelPart.tracer.color, 0.7);
+          }
+        } else {
+          fn.angle += dt * 1.15;
+          _fn2.set(
+            _fn1.x + Math.cos(fn.angle) * spec.radius,
+            _fn1.y + fn.height + Math.sin(fn.angle * 2) * 0.9,
+            _fn1.z + Math.sin(fn.angle) * spec.radius
+          );
+          fn.mesh.position.lerp(_fn2, 1 - Math.exp(-dt / 0.22));
+        }
 
-        if (target && target.alive) {
+        if (target && target.alive && (!spec.stationary || fn.planted)) {
           target.center(_fn3);
           fn.mesh.lookAt(_fn3);
           fn.cooldown -= dt;
@@ -1148,7 +1189,7 @@ export class Arena {
       if (f === this.player) this.chase.addShake(0.3);
     }
     playMelee(f.mech, slotName);
-    f.meleePending = { slot: slotName, timer: 0.18 };
+    f.meleePending = { slot: slotName, timer: 0.18, left: Math.max(1, w.part.hits || 1) };
     if (this._audibility(f) > 0.02) audio.melee();
     return true;
   }
@@ -1158,6 +1199,10 @@ export class Arena {
     f.meleePending = null;
     const w = f.weapons[pending.slot];
     const part = w.part;
+    // chain weapons land several links off one swing; re-arm before resolving
+    // this one so a target walking into the sweep still gets caught
+    const left = (pending.left || 1) - 1;
+    if (left > 0 && f.alive) f.meleePending = { slot: pending.slot, timer: 0.11, left };
     const target = f === this.player ? this.enemy : this.player;
     if (!target || !target.alive) return;
 
@@ -1179,6 +1224,25 @@ export class Arena {
     this.applyDamage(target, dmg, target.center(_v4), f, true);
     this.effects.explosion(_v4, part.tracer.color, 0.65);
     if (f === this.player) this.chase.addShake(0.5);
+  }
+
+  /**
+   * Strip generator charge off a target. Cutting the reserve is what stops a
+   * light frame from simply boosting out of the fight.
+   */
+  drainEnergy(target, amount, source) {
+    if (!target.alive || amount <= 0) return;
+    const before = target.energy;
+    target.energy = Math.max(0, target.energy - amount);
+    target.energyLock = ENERGY_DELAY;
+    if (target.energy <= 0 && before > 0) {
+      if (target.isPlayer) {
+        this.hud.feed('GENERATOR OFFLINE', 'bad');
+        audio.alarm();
+      } else if (source && source.isPlayer) {
+        this.hud.feed('ENEMY GENERATOR DOWN', 'good');
+      }
+    }
   }
 
   /* ------------------------------------------------------------ damage */
@@ -1219,10 +1283,26 @@ export class Arena {
 
     flashDamage(target.mech, 0.8);
     this.effects.hitSpark(at, melee ? 0xffd0f0 : 0xffb45e, melee ? 1.5 : 1);
+    if (source && source.isPlayer && !target.isPlayer && this._hitMarkTimer <= 0) {
+      // beams tick every frame; throttle so the marker reads as a pulse
+      this._hitMarkTimer = target.hp <= 0 ? 0 : 0.07;
+      this.hud.hitMarker(target.hp <= 0);
+    }
 
     if (target.isPlayer) {
       this.hud.flashDamage(Math.min(0.85, dmg / 120 + 0.15));
       this.chase.addShake(Math.min(0.7, dmg / 200 + 0.08));
+      // point a wedge back along the incoming line, in camera-relative terms
+      _dmgDir.subVectors(at, target.pos).setY(0);
+      if (_dmgDir.lengthSq() > 0.0001) {
+        // resolve into the chase camera's own frame: forward is -Z at yaw 0
+        const yaw = this.chase.yaw;
+        const sin = Math.sin(yaw);
+        const cos = Math.cos(yaw);
+        const ahead = _dmgDir.x * -sin + _dmgDir.z * -cos;
+        const right = _dmgDir.x * cos + _dmgDir.z * -sin;
+        this.hud.damageFrom(Math.atan2(right, ahead));
+      }
       audio.hitTaken();
       if (!this._lowHpWarned && target.hp / target.maxHp < 0.28) {
         this._lowHpWarned = true;
@@ -1486,8 +1566,47 @@ export class Arena {
       dodgeTimer: 0,
       burst: 0,
       burstOpen: true,
-      leftOpen: true
+      leftOpen: true,
+      phase: -1,
+      // when a phase list says anything about funnels, it decides when they fly
+      phaseOwnsFunnels: !!(e.phases || []).some((p) => p.funnels !== undefined),
+      funnelsFreed: false
     };
+  }
+
+  /**
+   * Multi-phase opponents rewrite their own behaviour profile as their armour
+   * falls away. Phases are listed high-HP first and are entered once each.
+   */
+  _checkPhases(e) {
+    const list = e.phases;
+    if (!list || !list.length) return;
+    const frac = e.hp / e.maxHp;
+    let next = e.ai.phase + 1;
+    let entered = null;
+    while (next < list.length && frac <= list[next].at) {
+      entered = list[next];
+      e.ai.phase = next;
+      next++;
+    }
+    if (!entered) return;
+
+    Object.assign(e.ai.profile, entered.ai || {});
+    e.ai.preferredRange = (e.ai.profile.band[0] + e.ai.profile.band[1]) * 0.5;
+    e.ai.state = 'engage';
+    e.ai.stateTimer = 0;
+    if (!e.stats.canJump && !e.stats.canThrust) e.ai.profile.jumpiness = 0;
+    if (entered.funnels !== undefined) {
+      e.ai.funnelsFreed = entered.funnels;
+      if (e.funnels) this.setFunnels(e, entered.funnels);
+    }
+
+    e.center(_v);
+    this.effects.explosion(_v, 0xffd06a, 1.1);
+    flashDamage(e.mech, 1);
+    this.chase.addShake(0.35);
+    this.hud.feed(entered.say || `${e.name} SHIFTS STANCE`, 'warn');
+    audio.alarm();
   }
 
   _updateAi(dt) {
@@ -1495,6 +1614,7 @@ export class Arena {
     const p = this.player;
     if (!e.alive || !p) return;
     const ai = e.ai;
+    this._checkPhases(e);
     const skill = (e.skill || 0.8) * this.difficulty.aiSpeed;
 
     e.center(_v);
@@ -1662,8 +1782,10 @@ export class Arena {
       this._handleTrigger(e, 'left', false, this._aiAim, dt);
     }
 
-    // bits stay out while the AI has the energy to run them
-    if (e.funnels) {
+    // Bits stay out while the AI has the energy to run them - unless this
+    // opponent's phase list owns the decision, in which case they stay docked
+    // until the phase that frees them.
+    if (e.funnels && !(ai.phaseOwnsFunnels && !ai.funnelsFreed)) {
       const wantOut = e.alive && los && dist < 130 && e.energy > e.maxEnergy * 0.4;
       const pullIn = e.energy < e.maxEnergy * 0.18;
       if (wantOut && !e.funnelsDeployed) this.setFunnels(e, true);
@@ -1740,11 +1862,15 @@ export class Arena {
         if (p.armTime > 0) continue;
         f.capsule(_pj1, _pj2);
         const res = closestSegmentPoints(p.prev, p.pos, _pj1, _pj2, hitA, hitB);
-        const rad = f.radius + p.radius;
+        // a proximity fuze bursts as soon as the shell passes near the frame
+        const rad = f.radius + p.radius + p.proximity;
         if (res.distSq <= rad * rad) {
           const point = _pjHit.copy(hitB).lerp(hitA, 0.5);
           if (p.blast > 0) this._blast(p, point);
-          else this.applyDamage(f, p.damage, point, p.owner);
+          else {
+            this.applyDamage(f, p.damage, point, p.owner);
+            if (p.energyDrain > 0) this.drainEnergy(f, p.energyDrain, p.owner);
+          }
           this.effects.impact(point, null, p.color, p.kind === 'missile' ? 1.6 : 0.9);
           consumed = true;
           break;
@@ -1785,6 +1911,7 @@ export class Arena {
       if (d < p.blast + f.radius) {
         const falloff = THREE.MathUtils.clamp(1 - d / (p.blast + f.radius), 0.25, 1);
         this.applyDamage(f, p.damage * falloff, _v4, p.owner === f ? null : p.owner);
+        if (p.energyDrain > 0 && p.owner !== f) this.drainEnergy(f, p.energyDrain * falloff, p.owner);
       }
     }
     if (this.player && point.distanceTo(this.player.pos) < 40) this.chase.addShake(0.4);
@@ -1805,6 +1932,7 @@ export class Arena {
     }
 
     this.elapsed += dt;
+    if (this._hitMarkTimer > 0) this._hitMarkTimer -= dt;
     this.envUpdate(dt, this.elapsed);
 
     if (!this.finished) {
