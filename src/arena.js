@@ -69,6 +69,14 @@ const _fn4 = new THREE.Vector3();
 const _fnQ = new THREE.Quaternion();
 const _fnUp = new THREE.Vector3(0, 1, 0);
 const _dmgDir = new THREE.Vector3();
+/** Chain links drawn along a tether at full stretch. */
+const TETHER_LINKS = 32;
+const _th1 = new THREE.Vector3();
+const _th2 = new THREE.Vector3();
+const _th3 = new THREE.Vector3();
+const _th4 = new THREE.Vector3();
+const _thA = new THREE.Vector3();
+const _thB = new THREE.Vector3();
 const _ld1 = new THREE.Vector3();
 const _ld2 = new THREE.Vector3();
 
@@ -239,6 +247,9 @@ class Fighter {
     };
 
     this.meleePending = null;
+    this.tether = null;
+    /** External per-frame velocity from a magnetic tether; the legs cannot fight it. */
+    this.tetherPull = null;
     this.funnels = null;
     this.funnelPart = null;
     this.funnelsDeployed = false;
@@ -298,6 +309,7 @@ export class Arena {
     this.projGeo = new Map();
     this.projMat = new Map();
     this.beamMats = new Map();
+    this.tetherMats = new Map();
     this.funnelMats = [];
 
     this.player = null;
@@ -422,6 +434,7 @@ export class Arena {
     this.effects.clear();
     for (const f of [this.player, this.enemy]) {
       if (!f) continue;
+      this._detachTether(f);
       this._disposeFunnels(f);
       for (const key of ['right', 'left', 'shoulder']) {
         const w = f.weapons[key];
@@ -452,8 +465,15 @@ export class Arena {
     this.projMat.clear();
     for (const m of this.beamMats.values()) m.dispose();
     this.beamMats.clear();
+    for (const m of this.tetherMats.values()) {
+      m.steel.dispose();
+      m.hot.dispose();
+    }
+    this.tetherMats.clear();
     if (this._beamGeo) this._beamGeo.dispose();
     if (this._funnelGeo) this._funnelGeo.dispose();
+    if (this._tetherHeadGeo) this._tetherHeadGeo.dispose();
+    if (this._tetherLinkGeo) this._tetherLinkGeo.dispose();
   }
 
   setPaused(on) {
@@ -808,6 +828,7 @@ export class Arena {
     if (w.cooldown > 0 || w.reloading) return false;
 
     if (part.kind === 'melee') return this._startMelee(f, slotName);
+    if (part.kind === 'grapple') return this._startGrapple(f, slotName);
 
     if (w.usesAmmo && w.ammo <= 0) {
       this.reload(f, slotName);
@@ -1177,6 +1198,281 @@ export class Arena {
     }
   }
 
+  /* ------------------------------------------------------------ tether */
+
+  /**
+   * Launch a magnetic harpoon. It only acquires a frame that is inside the
+   * launch cone, in range and in the open; from there the head steers itself
+   * on, so a fair shot lands rather than needing to be threaded.
+   */
+  _startGrapple(f, slotName) {
+    const w = f.weapons[slotName];
+    const part = w.part;
+    if (f.tether) return false;
+    if (!f.spendEnergy(part.energy || 0)) {
+      if (f.isPlayer) this.hud.feed('ENERGY DEPLETED', 'bad');
+      return false;
+    }
+    w.cooldown = w.interval;
+    f.shotsFired += 1;
+
+    w.muzzle.getWorldPosition(_th1);
+    _th2.copy(this._aimPointFor(f, slotName)).sub(_th1);
+    if (_th2.lengthSq() < 0.0001) f.forward(_th2);
+    _th2.normalize();
+
+    // magnetic acquisition: cone + range + line of sight
+    const other = f === this.player ? this.enemy : this.player;
+    let target = null;
+    if (other && other.alive) {
+      other.center(_th3);
+      const gap = _th3.distanceTo(_th1);
+      if (gap <= part.range) {
+        _th4.copy(_th3).sub(_th1).normalize();
+        if (_th4.dot(_th2) >= Math.cos((part.arc || 60) * 0.5 * DEG) && this.hasLineOfSight(_th1, _th3)) {
+          target = other;
+        }
+      }
+    }
+
+    f.tether = {
+      slot: slotName,
+      part,
+      phase: 'out',
+      target,
+      tip: _th1.clone(),
+      vel: _th2.clone().multiplyScalar(part.speed),
+      travelled: 0,
+      timer: 0,
+      visual: null
+    };
+    this.effects.muzzleFlash(_th1, _th2, part.tracer.color, 0.7);
+    if (this._audibility(f) > 0.02) audio.ballisticShot();
+    return true;
+  }
+
+  /** The point a fighter is currently aiming at, for either side. */
+  _aimPointFor(f, slotName) {
+    if (f.isPlayer) return this._aimPoint;
+    const other = this.player;
+    if (other && other.alive) return other.center(this._aiAim);
+    return f.center(this._aiAim).addScaledVector(f.forward(_th4), 20);
+  }
+
+  /**
+   * Fly the head out, hold the bite, and reel. The reel is split by frame
+   * weight, so harpooning something heavier drags you to it instead.
+   */
+  _updateTether(f, dt) {
+    const t = f.tether;
+    if (!t) return;
+    const part = t.part;
+
+    if (!f.alive) {
+      this._detachTether(f);
+      return;
+    }
+
+    f.weapons[t.slot].muzzle.getWorldPosition(_th1);
+
+    if (t.phase === 'out') {
+      // steer the head onto the acquired frame
+      if (t.target && t.target.alive) {
+        t.target.center(_th2);
+        _th3.subVectors(_th2, t.tip);
+        const d = _th3.length();
+        if (d > 0.001) {
+          _th3.divideScalar(d);
+          const speed = t.vel.length();
+          _th4.copy(t.vel).divideScalar(Math.max(0.0001, speed));
+          _th4.addScaledVector(_th3, part.homing * dt).normalize();
+          t.vel.copy(_th4).multiplyScalar(speed);
+        }
+      }
+
+      _th2.copy(t.tip);
+      t.tip.addScaledVector(t.vel, dt);
+      const step = _th3.subVectors(t.tip, _th2).length();
+      t.travelled += step;
+
+      // bite: the head only sticks to a frame, never to the scenery
+      if (t.target && t.target.alive) {
+        t.target.capsule(_th3, _th4);
+        const res = closestSegmentPoints(_th2, t.tip, _th3, _th4, _thA, _thB);
+        const reach = t.target.radius + part.magnet;
+        if (res.distSq <= reach * reach) {
+          t.phase = 'attached';
+          t.timer = 0;
+          t.tip.copy(_thB);
+          this.applyDamage(t.target, part.damage, _thB, f, false);
+          this.effects.impact(_thB, null, part.tracer.color, 1.2);
+          if (f.isPlayer) {
+            this.hud.feed('TETHER LOCKED', 'good');
+            this.chase.addShake(0.25);
+          } else if (t.target.isPlayer) {
+            this.hud.feed('TETHERED', 'bad');
+            this.chase.addShake(0.4);
+            audio.alarm();
+          }
+          if (this._audibility(f) > 0.02) audio.block();
+        }
+      }
+
+      if (t.phase === 'out') {
+        // snapped on the scenery, or simply ran out of chain
+        const blocked = !this.hasLineOfSight(_th1, t.tip);
+        if (blocked || t.travelled > part.range) {
+          if (blocked) this.effects.impact(t.tip, null, part.tracer.color, 0.5);
+          this._detachTether(f);
+          return;
+        }
+      }
+    }
+
+    if (t.phase === 'attached') {
+      const target = t.target;
+      t.timer += dt;
+      if (!target || !target.alive || t.timer > part.hold) {
+        this._detachTether(f);
+        return;
+      }
+      target.center(_th2);
+      t.tip.copy(_th2);
+
+      f.center(_th3);
+      _th4.subVectors(_th2, _th3);
+      const gap = _th4.length();
+      // the chain parts on cover, and lets go once they are on top of you
+      if (gap <= part.minGap) {
+        if (f.isPlayer) this.hud.feed('TARGET REELED IN', 'good');
+        this._detachTether(f);
+        return;
+      }
+      if (!this.hasLineOfSight(_th3, _th2)) {
+        this._detachTether(f);
+        return;
+      }
+      _th4.divideScalar(gap);
+
+      // split the closing speed by weight: light frames get yanked, heavy ones
+      // stay put and drag the harpooner in instead
+      const wf = Math.max(1, f.stats.weight);
+      const wt = Math.max(1, target.stats.weight);
+      const total = wf + wt;
+      f.tetherPull = _th4.clone().multiplyScalar((part.pull * wt) / total);
+      target.tetherPull = _th4.clone().multiplyScalar((-part.pull * wf) / total);
+      target.energyLock = ENERGY_DELAY;
+
+      if (Math.random() < dt * 12) this.effects.hitSpark(_th2, part.tracer.color, 0.4);
+    }
+
+    this._drawTether(f, _th1);
+  }
+
+  /**
+   * Cable, interlocking links and a barbed head. The links are what make it
+   * read as a chain from across the arena rather than as a beam, so they are
+   * spaced by world distance and alternate their roll to interlock.
+   */
+  _drawTether(f, from) {
+    const t = f.tether;
+    if (!t.visual) {
+      let mats = this.tetherMats.get(t.part.id);
+      if (!mats) {
+        const colour = new THREE.Color(t.part.tracer.color);
+        mats = {
+          // the links carry a little emission of their own so the chain still
+          // reads in the darker arenas rather than going to silhouette
+          steel: new THREE.MeshStandardMaterial({
+            color: 0xc3d4e2, emissive: 0x35505f, emissiveIntensity: 1, metalness: 0.9, roughness: 0.34
+          }),
+          hot: new THREE.MeshStandardMaterial({
+            color: colour, emissive: colour, emissiveIntensity: 2.4, metalness: 0.4, roughness: 0.3
+          })
+        };
+        this.tetherMats.set(t.part.id, mats);
+      }
+      const cable = new THREE.Mesh(this._beamGeometry(), mats.hot);
+      cable.frustumCulled = false;
+      const head = new THREE.Mesh(this._tetherHeadGeometry(), mats.steel);
+      head.frustumCulled = false;
+      head.castShadow = true;
+      const links = [];
+      for (let i = 0; i < TETHER_LINKS; i++) {
+        const link = new THREE.Mesh(this._tetherLinkGeometry(), mats.steel);
+        link.frustumCulled = false;
+        link.visible = false;
+        links.push(link);
+      }
+      this.scene.add(cable, head, ...links);
+      t.visual = { cable, head, links };
+    }
+
+    const { cable, head, links } = t.visual;
+    const len = Math.max(0.01, from.distanceTo(t.tip));
+
+    cable.visible = true;
+    cable.position.copy(from).lerp(t.tip, 0.5);
+    cable.lookAt(t.tip);
+    const r = t.phase === 'attached' ? 0.17 : 0.12;
+    cable.scale.set(r, r, len);
+
+    head.visible = true;
+    head.position.copy(t.tip);
+    head.lookAt(from);
+
+    // one link every 1.5 m, so a long throw does not thin out
+    const used = Math.min(TETHER_LINKS, Math.max(2, Math.round(len / 1.5)));
+    for (let i = 0; i < links.length; i++) {
+      const link = links[i];
+      if (i >= used) {
+        link.visible = false;
+        continue;
+      }
+      link.visible = true;
+      link.position.copy(from).lerp(t.tip, (i + 0.5) / used);
+      link.lookAt(t.tip);
+      if (i % 2) link.rotateX(Math.PI / 2);
+    }
+  }
+
+  _tetherHeadGeometry() {
+    if (!this._tetherHeadGeo) {
+      const g = new THREE.ConeGeometry(0.42, 1.5, 6);
+      g.rotateX(Math.PI / 2);
+      this._tetherHeadGeo = g;
+    }
+    return this._tetherHeadGeo;
+  }
+
+  _tetherLinkGeometry() {
+    if (!this._tetherLinkGeo) this._tetherLinkGeo = new THREE.TorusGeometry(0.4, 0.13, 4, 8);
+    return this._tetherLinkGeo;
+  }
+
+  _detachTether(f) {
+    const t = f.tether;
+    if (!t) return;
+    if (t.visual) {
+      for (const m of [t.visual.cable, t.visual.head, ...t.visual.links]) {
+        if (m.parent) m.parent.remove(m);
+      }
+    }
+    if (t.target) t.target.tetherPull = null;
+    f.tetherPull = null;
+    f.tether = null;
+  }
+
+  /** Recompute both tethers for the frame; pulls are consumed on the next one. */
+  _updateTethers(dt) {
+    for (const f of [this.player, this.enemy]) {
+      if (f) f.tetherPull = null;
+    }
+    for (const f of [this.player, this.enemy]) {
+      if (f) this._updateTether(f, dt);
+    }
+  }
+
   _startMelee(f, slotName) {
     const w = f.weapons[slotName];
     if (!f.spendEnergy(w.part.energy || 0)) return false;
@@ -1322,6 +1618,12 @@ export class Arena {
   _destroy(f) {
     f.alive = false;
     f.deadTimer = 0;
+    this._detachTether(f);
+    // whoever had this frame on a chain loses it
+    for (const other of [this.player, this.enemy]) {
+      if (other && other.tether && other.tether.target === f) this._detachTether(other);
+    }
+    f.tetherPull = null;
     this.setFunnels(f, false);
     for (const key of ['right', 'left']) {
       const w = f.weapons[key];
@@ -1338,6 +1640,10 @@ export class Arena {
 
   _finish(win, reason) {
     if (this.finished) return;
+    // the result screen stops stepping the sim, so let go of any live chain
+    for (const f of [this.player, this.enemy]) {
+      if (f) this._detachTether(f);
+    }
     this.finished = true;
     this.endTimer = 2.1;
     this._result = { win, reason };
@@ -1487,6 +1793,11 @@ export class Arena {
     // gravity + integrate
     f.vel.y -= GRAVITY * dt;
     f.pos.addScaledVector(f.vel, dt);
+    // A tether drags the frame on top of whatever the legs are doing. It is
+    // applied here rather than folded into `vel` so the steering controller
+    // above cannot immediately damp it back out, but still ahead of the ground
+    // contact and collision passes below.
+    if (f.tetherPull) f.pos.addScaledVector(f.tetherPull, dt);
 
     // ground contact
     const gy = this.groundHeightAt(f.pos.x, f.pos.z, f.radius) + stats.hoverHeight;
@@ -1559,6 +1870,7 @@ export class Arena {
       strafeDir: Math.random() > 0.5 ? 1 : -1,
       preferredRange: (profile.band[0] + profile.band[1]) * 0.5,
       meleeSlot: rw.kind === 'melee' ? 'right' : lw.kind === 'melee' ? 'left' : null,
+      grappleSlot: rw.kind === 'grapple' ? 'right' : lw.kind === 'grapple' ? 'left' : null,
       reactionTimer: 0,
       aimError: new THREE.Vector3(),
       aimErrorTimer: 0,
@@ -1760,10 +2072,12 @@ export class Arena {
       }
 
       const facingGate = 0.82 + prof.discipline * 0.1;
-      const wantRight = facing > facingGate && ai.burstOpen && dist < rw.range * 1.05 && rw.kind !== 'melee';
+      const wantRight =
+        facing > facingGate && ai.burstOpen && dist < rw.range * 1.05 && rw.kind !== 'melee' && rw.kind !== 'grapple';
       const lw = e.weapons.left.part;
       const wantLeft =
-        facing > facingGate && ai.burstOpen && lw.kind !== 'none' && lw.kind !== 'shield' && lw.kind !== 'melee' && dist < lw.range * 1.05;
+        facing > facingGate && ai.burstOpen && lw.kind !== 'none' && lw.kind !== 'shield' &&
+        lw.kind !== 'melee' && lw.kind !== 'grapple' && dist < lw.range * 1.05;
 
       // charge weapons need the trigger held, so the AI commits for a beat
       this._handleTrigger(e, 'right', wantRight, aimAt, dt, aiLead);
@@ -1771,6 +2085,16 @@ export class Arena {
 
       if (e.weapons.shoulder && dist < 120 && Math.random() < 0.012 + skill * 0.02) {
         this.fire(e, 'shoulder', aimAt, aiLead);
+      }
+
+      // The tether is how a brawler closes: throw it as soon as the player is
+      // out past the reach of whatever it wants to hit them with.
+      if (ai.grappleSlot && !e.tether) {
+        const gp = e.weapons[ai.grappleSlot].part;
+        const reach = ai.meleeSlot ? e.weapons[ai.meleeSlot].part.range : gp.minGap * 1.6;
+        if (dist > reach * 0.8 && dist < gp.range * 0.92 && facing > 0.9) {
+          this.fire(e, ai.grappleSlot, aimAt);
+        }
       }
 
       if (ai.meleeSlot && dist < e.weapons[ai.meleeSlot].part.range * 0.9 && facing > 0.8) {
@@ -1977,6 +2301,7 @@ export class Arena {
       else f.root.position.copy(f.pos);
     }
 
+    this._updateTethers(dt);
     this._updateProjectiles(dt);
     this.effects.update(dt);
 
@@ -2002,6 +2327,7 @@ export class Arena {
       if (w.part.kind === 'none') return '--';
       if (w.reloading) return 'RELOAD';
       if (w.part.kind === 'melee') return 'BLADE';
+      if (w.part.kind === 'grapple') return 'TETHER';
       if (w.part.kind === 'shield') return 'GUARD';
       if (!w.usesAmmo) return 'ENERGY';
       return `${w.ammo}/${w.part.mag}`;

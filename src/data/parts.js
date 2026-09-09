@@ -706,6 +706,21 @@ export const WEAPONS = [
     geo: { style: 'whip', length: 6.4, bulk: 0.2 }
   },
   {
+    id: 'wp_mag_tether',
+    name: 'GRAPNEL TETHER',
+    class: 'TETHER',
+    kind: 'grapple',
+    desc: 'Fires a magnetic harpoon on a chain. Once it bites it reels the two frames together, so bring something to hit them with.',
+    slots: ['left', 'right'],
+    weight: 300, armor: 34,
+    damage: 48, rpm: 26, pellets: 1, speed: 115, spread: 0,
+    mag: 0, reload: 0, energy: 34, range: 46,
+    arc: 62, magnet: 5.5, homing: 7.0,
+    pull: 26, hold: 1.6, minGap: 7,
+    tracer: { color: 0x8fd4ff, radius: 0.15, length: 2.2, glow: 1.9 },
+    geo: { style: 'harpoon', length: 2.4, bulk: 0.44 }
+  },
+  {
     id: 'wp_tower_shield',
     name: 'AEGIS TOWER SHIELD',
     class: 'DEFENCE',
@@ -995,14 +1010,14 @@ export const ENEMY_PRESETS = [
     id: 'revenant',
     name: 'REVENANT',
     threat: 9,
-    blurb: 'Ghost frame on a chain whip. Wound it and the limiters come off.',
+    blurb: 'Ghost frame on a chain whip. It harpoons you into range, and wounding it only takes the limiters off.',
     skill: 0.96,
     hpMult: 1.3,
     head: 'head_duel', torso: 'torso_revenant', arms: 'arms_ronin',
     legs: 'legs_skimmer', backpack: 'back_seraph',
-    rightWeapon: 'wp_chain_whip', leftWeapon: 'wp_sprayer',
+    rightWeapon: 'wp_chain_whip', leftWeapon: 'wp_mag_tether',
     colors: { primary: '#2a1c1c', secondary: '#150e0e', accent: '#ff8a3d', frame: '#0b0707', glow: '#ff6a2a' },
-    unlocks: ['torso_revenant', 'back_overdrive', 'wp_chain_whip'],
+    unlocks: ['torso_revenant', 'back_overdrive', 'wp_chain_whip', 'wp_mag_tether'],
     ai: { band: [12, 40], aggression: 0.75, dodge: 0.80, strafe: 0.85, jumpiness: 0.70, discipline: 0.60, flank: 0.65, holdGround: false },
     phases: [
       {
